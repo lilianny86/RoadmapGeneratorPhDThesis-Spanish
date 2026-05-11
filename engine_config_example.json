@@ -1,0 +1,23 @@
+{
+  "max_recommendations": 30,
+  "max_candidates_per_kpi": 4,
+  "max_per_provider": 4,
+  "max_per_kpi": 2,
+  "diversify_domains": true,
+  "min_domain_coverage": 4,
+  "weight_priority": 0.34,
+  "weight_impact": 0.26,
+  "weight_cost": 0.16,
+  "weight_risk": 0.12,
+  "weight_effort": 0.12,
+  "budget_total_clp": 1500000,
+  "budget_short_clp": 600000,
+  "budget_medium_clp": 500000,
+  "budget_long_clp": 400000,
+  "horizon_factor": {
+    "Corto plazo": 1.0,
+    "Mediano plazo": 0.92,
+    "Largo plazo": 0.84,
+    "Sin clasificar": 0.75
+  }
+}

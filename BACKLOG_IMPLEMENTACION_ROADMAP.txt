@@ -1,0 +1,49 @@
+BACKLOG IMPLEMENTACION ROADMAP - AgroMaturityApp
+Fecha: 2026-04-15
+
+ESCALA
+- Prioridad: P0=critico, P1=alto, P2=medio
+- Esfuerzo: S=1-2 dias, M=3-5 dias, L=1-2 semanas
+
+ESTADO INICIAL
+- En progreso: SEC-01, SEC-02, ARCH-01
+- Pendiente: resto del backlog
+
+BACKLOG PRIORIZADO
+
+01 | SEC-01 | Rotar credenciales SMTP expuestas y revocar clave actual | P0 | S | Dep: -
+02 | SEC-02 | Mover secretos a variables de entorno seguras y .env.example | P0 | S | Dep: SEC-01
+03 | ARCH-01 | Reconstruir base de codigo editable desde ejecutable actual | P0 | L | Dep: SEC-02
+04 | ARCH-02 | Separar modulos data, engine, reporting, ui, infra | P1 | M | Dep: ARCH-01
+05 | DATA-01 | Definir esquema catalogo v3 (tipos, obligatorios, enums) | P0 | M | Dep: ARCH-02
+06 | DATA-02 | Normalizar catalogo (precios CLP, plazo estructurado, URLs limpias) | P0 | L | Dep: DATA-01
+07 | DATA-03 | Validaciones automaticas (nulos, duplicados, links, vigencia) | P1 | M | Dep: DATA-02
+08 | DATA-04 | Enriquecer catalogo (impacto, esfuerzo, riesgo, dependencias) | P1 | M | Dep: DATA-01
+09 | ENG-01 | Scoring multicriterio configurable | P0 | L | Dep: DATA-02, DATA-04
+10 | ENG-02 | Optimizacion por presupuesto y horizonte | P1 | M | Dep: ENG-01
+11 | ENG-03 | Regla anti-repeticion y diversificacion de recomendaciones | P1 | M | Dep: ENG-01
+12 | ENG-04 | Explicabilidad por recomendacion (por que, impacto, supuestos) | P1 | M | Dep: ENG-01
+13 | REP-01 | Redisenar informe amigable v2 (resumen ejecutivo + plan 30/90/180) | P0 | L | Dep: ENG-04
+14 | REP-02 | Redisenar informe tecnico v2 (trazabilidad + graficos de brecha) | P1 | L | Dep: ENG-01
+15 | UX-01 | Vista previa editable antes de exportar | P2 | M | Dep: REP-01
+16 | UX-02 | Autosave y recuperacion de sesion por empresa | P2 | M | Dep: ARCH-02
+17 | QA-01 | Tests unitarios e integracion de motor y exportadores | P1 | L | Dep: ENG-02, ENG-03, REP-02
+18 | QA-02 | Regresion visual de PDF con baseline de plantillas | P1 | M | Dep: REP-01, REP-02
+19 | REL-01 | Pipeline de build/release reproducible | P1 | M | Dep: QA-01, QA-02
+20 | REL-02 | Piloto con 3-5 casos reales y ajustes finales | P1 | M | Dep: REL-01
+
+CAMINO CRITICO
+1) SEC-01 -> SEC-02 -> ARCH-01 -> DATA-01 -> DATA-02
+2) ENG-01 -> ENG-04 -> REP-01
+3) QA-01 -> QA-02 -> REL-01 -> REL-02
+
+SPRINTS SUGERIDOS
+- Sprint 1-2: 01 al 06
+- Sprint 3-4: 07 al 12
+- Sprint 5-6: 13 al 16
+- Sprint 7-8: 17 al 20
+
+NOTAS DE IMPLEMENTACION INMEDIATA
+- Paso siguiente recomendado: ejecutar SEC-01 y SEC-02 antes de tocar motor de recomendacion.
+- Riesgo principal actual: solo hay binario empaquetado; ARCH-01 es requisito para mejoras profundas de codigo.
+- Entregable de esta iteracion: backlog operativo creado en raiz del workspace.

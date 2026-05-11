@@ -1,0 +1,9 @@
+# Entorno y secretos
+.env
+.env.*
+!.env.example
+
+# Salidas generadas
+outputs/
+__pycache__/
+*.pyc

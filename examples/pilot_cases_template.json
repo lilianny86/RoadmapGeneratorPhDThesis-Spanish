@@ -1,0 +1,39 @@
+{
+  "cases": [
+    {
+      "case_id": "piloto_small_01",
+      "company_type": "small",
+      "target_level": 3,
+      "company_name": "Piloto Small 01",
+      "company_rut": "11.111.111-1",
+      "company_email": "piloto1@example.com",
+      "answers_file": "examples/answers_small.json"
+    },
+    {
+      "case_id": "piloto_medium_01",
+      "company_type": "medium",
+      "target_level": 4,
+      "company_name": "Piloto Medium 01",
+      "company_rut": "22.222.222-2",
+      "company_email": "piloto2@example.com",
+      "answers_file": "examples/answers_medium.json",
+      "engine_overrides": {
+        "budget_total_clp": 8000000,
+        "max_recommendations": 20
+      }
+    },
+    {
+      "case_id": "piloto_small_02",
+      "company_type": "small",
+      "target_level": 4,
+      "company_name": "Piloto Small 02",
+      "company_rut": "33.333.333-3",
+      "company_email": "piloto3@example.com",
+      "answers_file": "examples/answers_small.json",
+      "engine_overrides": {
+        "max_per_provider": 2,
+        "max_per_kpi": 1
+      }
+    }
+  ]
+}
