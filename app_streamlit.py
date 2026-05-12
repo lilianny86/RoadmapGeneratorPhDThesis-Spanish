@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import html
 import re
@@ -12,7 +13,8 @@ from typing import Any
 
 import streamlit as st
 
-from pdf_export import export_friendly_pdf, export_technical_pdf
+from pdf_export import export_friendly_pdf as export_friendly_pdf_es, export_technical_pdf
+from pdf_export_en import export_friendly_pdf as export_friendly_pdf_en
 from recommendation_engine import build_engine_config
 from roadmap_core import build_roadmap, load_profile_data, save_traceability_csv, save_traceability_json, save_txt
 from security_config import load_security_config, validate_smtp_config
@@ -25,10 +27,17 @@ BUDGET_OPTIONS = [
     "between_1m_5m",
     "from_5m",
 ]
-BUDGET_LABELS = {
-    "up_to_1m": "Hasta 1.000.000 CLP",
-    "between_1m_5m": "Entre 1.000.000 y 5.000.000 CLP",
-    "from_5m": "Desde 5.000.000 CLP",
+BUDGET_LABELS_BY_LANG = {
+    "es": {
+        "up_to_1m": "Hasta CLP 1.000.000",
+        "between_1m_5m": "Desde CLP 1.000.001 a CLP 4.999.999",
+        "from_5m": "CLP 5.000.000 o más",
+    },
+    "en": {
+        "up_to_1m": "Up to CLP 1,000,000",
+        "between_1m_5m": "From CLP 1,000,001 to CLP 4,999,999",
+        "from_5m": "CLP 5,000,000 or more",
+    },
 }
 BUDGET_TO_CLP = {
     "up_to_1m": 1_000_000.0,
@@ -36,25 +45,192 @@ BUDGET_TO_CLP = {
     "from_5m": 5_000_000.0,
 }
 RUT_WIDGET_KEY = "company_rut_input"
+FLAGS_DIR = ROOT / "assets" / "localization" / "flags"
+FLAG_ES_PATH = FLAGS_DIR / "es_flag.png"
+FLAG_EN_PATH = FLAGS_DIR / "en_flag.png"
+
+UI_TEXTS = {
+    "es": {
+        "page_title": "RoadmapGenerator | Captura",
+        "setup_header": "Configuración inicial",
+        "company_data_header": "Datos de la empresa",
+        "company_type": "Tipo de empresa*",
+        "company_type_select": "------Seleccione------",
+        "company_small": "Pequeña empresa",
+        "company_medium": "Mediana empresa",
+        "company_name": "Nombre empresa*",
+        "company_name_placeholder": "Ingrese nombre empresa",
+        "email": "Correo*",
+        "target_level": "Nivel objetivo",
+        "improvement_budget": "Presupuesto para mejoras*",
+        "required_note": "* Campos obligatorios",
+        "invalid_rut": "RUT inválido. Verifica el dígito verificador.",
+        "missing_required_warning": "Completa los campos obligatorios del panel izquierdo antes de responder el cuestionario.",
+        "missing_prefix": "Faltan:",
+        "questions": "Preguntas",
+        "profile": "Perfil",
+        "target_level_card": "Nivel Objetivo",
+        "questionnaire": "Cuestionario",
+        "answer": "Respuesta",
+        "generate": "Generar Roadmap",
+        "generating": "Generando roadmap y archivos de salida...",
+        "generated_ok": "Roadmap generado correctamente.",
+        "current_score": "Puntaje actual",
+        "target_score": "Puntaje objetivo",
+        "actions": "Acciones",
+        "email_label": "Correo",
+        "email_not_sent": "No enviado",
+        "download_es": "Descargar Roadmap PDF (ES)",
+        "download_en": "Descargar Roadmap PDF (EN)",
+        "select_company_type": "Selecciona el tipo de empresa para continuar.",
+        "cannot_load_profile": "No se pudo cargar el perfil",
+        "roadmap_error": "No se pudo generar el roadmap",
+        "language_button": "English",
+        "title_company_default": "Empresa",
+        "main_title": "RoadmapGenerator | Captura de Datos",
+        "missing_company_type": "Tipo de empresa",
+        "missing_company_name": "Nombre empresa",
+        "missing_rut": "RUT",
+        "missing_valid_rut": "RUT válido",
+        "missing_email": "Correo",
+        "smtp_missing_email": "Por favor ingresa un correo válido en Datos de la empresa (campo Correo).",
+        "email_subject": "Roadmap customizado {company}",
+        "email_body": "Estimado/a,\nSe adjunta el Roadmap customizado para la empresa {company}.\n*Este es un correo automático. No responder.",
+        "not_sent_prefix": "No enviado",
+        "sent_prefix": "Enviado a",
+        "question_fallback": "Pregunta {qnum}",
+        "friendly_label_es": "PDF amigable ES",
+        "friendly_label_en": "PDF friendly EN",
+    },
+    "en": {
+        "page_title": "RoadmapGenerator | Capture",
+        "setup_header": "Initial Setup",
+        "company_data_header": "Company Data",
+        "company_type": "Company type*",
+        "company_type_select": "------Select------",
+        "company_small": "Small enterprise",
+        "company_medium": "Medium-sized enterprise",
+        "company_name": "Company name*",
+        "company_name_placeholder": "Enter company name",
+        "email": "Email*",
+        "target_level": "Target level",
+        "improvement_budget": "Improvement budget*",
+        "required_note": "* Required fields",
+        "invalid_rut": "Invalid RUT. Please verify the check digit.",
+        "missing_required_warning": "Complete the required fields in the left panel before answering the questionnaire.",
+        "missing_prefix": "Missing:",
+        "questions": "Questions",
+        "profile": "Profile",
+        "target_level_card": "Target Level",
+        "questionnaire": "Questionnaire",
+        "answer": "Answer",
+        "generate": "Generate Roadmap",
+        "generating": "Generating roadmap and output files...",
+        "generated_ok": "Roadmap generated successfully.",
+        "current_score": "Current Score",
+        "target_score": "Target Score",
+        "actions": "Actions",
+        "email_label": "Email",
+        "email_not_sent": "Not sent",
+        "download_es": "Download PDF Roadmap (ES)",
+        "download_en": "Download PDF Roadmap (EN)",
+        "select_company_type": "Select a company type to continue.",
+        "cannot_load_profile": "Unable to load profile",
+        "roadmap_error": "The roadmap could not be generated",
+        "language_button": "Español",
+        "title_company_default": "Company",
+        "main_title": "RoadmapGenerator | Company Data Capture",
+        "missing_company_type": "Company type",
+        "missing_company_name": "Company name",
+        "missing_rut": "RUT",
+        "missing_valid_rut": "Valid RUT",
+        "missing_email": "Email",
+        "smtp_missing_email": "Please provide a valid email address in Company Data (Email field).",
+        "email_subject": "Customized Roadmap {company}",
+        "email_body": "Dear Recipient,\nPlease find attached the customized roadmap for {company}.\n*This is an automated email. Please do not reply.",
+        "not_sent_prefix": "Not sent",
+        "sent_prefix": "Sent to",
+        "question_fallback": "Question {qnum}",
+        "friendly_label_es": "Friendly PDF ES",
+        "friendly_label_en": "Friendly PDF EN",
+    },
+}
 
 
 def _slug(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", str(value or "")).encode("ascii", "ignore").decode("ascii")
     clean = re.sub(r"[^a-zA-Z0-9]+", "-", normalized).strip("-").lower()
-    return clean or "empresa"
+    return clean or "company"
+
+
+def _lang(lang: str) -> str:
+    return "en" if str(lang).lower() == "en" else "es"
+
+
+def _t(lang: str, key: str, **kwargs: object) -> str:
+    data = UI_TEXTS[_lang(lang)].get(key, key)
+    return data.format(**kwargs) if kwargs else data
+
+
+def _budget_labels(lang: str) -> dict[str, str]:
+    return BUDGET_LABELS_BY_LANG[_lang(lang)]
+
+
+@st.cache_data(show_spinner=False)
+def _img_data_url(path_str: str) -> str:
+    path = Path(path_str)
+    if not path.exists():
+        return ""
+    suffix = path.suffix.lower()
+    if suffix in [".jpg", ".jpeg"]:
+        mime = "image/jpeg"
+    elif suffix == ".svg":
+        mime = "image/svg+xml"
+    elif suffix == ".webp":
+        mime = "image/webp"
+    else:
+        mime = "image/png"
+    encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+    return f"data:{mime};base64,{encoded}"
+
+
+def _render_language_flag(language: str) -> None:
+    current = _lang(language)
+    target = "en" if current == "es" else "es"
+    target_label = "English" if target == "en" else "Español"
+    flag_path = FLAG_EN_PATH if current == "es" else FLAG_ES_PATH
+    data_url = _img_data_url(str(flag_path))
+    if not data_url:
+        if st.button(target_label, key="lang_text_fallback", use_container_width=True):
+            st.session_state["ui_language"] = target
+            st.rerun()
+        return
+    st.markdown(
+        f"""
+<div style="display:flex; justify-content:flex-end; align-items:center; margin-top:2.4rem;">
+  <a href="?ui_lang={target}" title="{html.escape(target_label)}"
+     style="display:inline-flex; width:22px; height:14px; align-items:center; justify-content:center; border:1px solid rgba(47,109,60,0.25); border-radius:2px; overflow:hidden; box-shadow:0 2px 6px rgba(0,0,0,0.12);">
+    <img src="{data_url}" alt="{html.escape(target_label)}"
+         style="display:block; width:22px; height:14px; object-fit:cover;" />
+  </a>
+</div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def _company_name_for_filename(value: str) -> str:
     text = unicodedata.normalize("NFC", str(value or "")).strip()
     text = re.sub(r'[<>:"/\\|?*\x00-\x1F]+', "", text)
     text = re.sub(r"\s+", "_", text).strip("._-")
-    return (text or "Empresa").upper()
+    return (text or "Company").upper()
 
 
-def _friendly_pdf_filename(company_type: str, company_name: str, generated_at: datetime) -> str:
+def _friendly_pdf_filename(company_type: str, company_name: str, generated_at: datetime, language: str) -> str:
     prefix = "ME" if str(company_type) == "medium" else "PE"
     stamp = generated_at.strftime("%Y%m%d_%H%M")
-    return f"Roadmap_{prefix}_{_company_name_for_filename(company_name)}_{stamp}.pdf"
+    lang_tag = "EN" if _lang(language) == "en" else "ES"
+    return f"Roadmap_{prefix}_{_company_name_for_filename(company_name)}_{stamp}_{lang_tag}.pdf"
 
 
 def _normalize_rut(raw: str) -> str:
@@ -98,8 +274,8 @@ def _on_rut_change() -> None:
 
 
 @st.cache_data(show_spinner=False)
-def _load_profile_cached(root: str, company_type: str) -> dict[str, object]:
-    return load_profile_data(Path(root), company_type)
+def _load_profile_cached(root: str, company_type: str, language: str) -> dict[str, object]:
+    return load_profile_data(Path(root), company_type, language=_lang(language))
 
 
 def _render_styles() -> None:
@@ -417,9 +593,10 @@ h1, h2, h3 {
     )
 
 
-def _render_sidebar(profile: dict[str, object], max_level: int) -> dict[str, object]:
-    st.sidebar.header("Datos De Empresa")
-    company_name = st.sidebar.text_input("Nombre empresa*", value="", placeholder="Ingresa nombre de la empresa")
+def _render_sidebar(profile: dict[str, object], max_level: int, language: str) -> dict[str, object]:
+    budget_labels = _budget_labels(language)
+    st.sidebar.header(_t(language, "company_data_header"))
+    company_name = st.sidebar.text_input(_t(language, "company_name"), value="", placeholder=_t(language, "company_name_placeholder"))
     if RUT_WIDGET_KEY not in st.session_state:
         st.session_state[RUT_WIDGET_KEY] = ""
     company_rut = st.sidebar.text_input(
@@ -442,23 +619,23 @@ def _render_sidebar(profile: dict[str, object], max_level: int) -> dict[str, obj
             """,
             unsafe_allow_html=True,
         )
-        st.sidebar.markdown("<div class='field-error'>RUT inválido. Verifica el dígito verificador.</div>", unsafe_allow_html=True)
-    company_email = st.sidebar.text_input("Correo*", value="")
-    target_level = st.sidebar.slider("Nivel objetivo", min_value=1, max_value=max_level, value=min(3, max_level), step=1)
+        st.sidebar.markdown(f"<div class='field-error'>{html.escape(_t(language, 'invalid_rut'))}</div>", unsafe_allow_html=True)
+    company_email = st.sidebar.text_input(_t(language, "email"), value="")
+    target_level = st.sidebar.slider(_t(language, "target_level"), min_value=1, max_value=max_level, value=min(3, max_level), step=1)
     budget_total_key = st.sidebar.radio(
-        "Presupuesto para mejoras*",
+        _t(language, "improvement_budget"),
         options=BUDGET_OPTIONS,
         index=1,
-        format_func=lambda key: BUDGET_LABELS.get(str(key), str(key)),
+        format_func=lambda key: budget_labels.get(str(key), str(key)),
     )
-    st.sidebar.markdown("<div class='sidebar-required-note'>* Campos obligatorios</div>", unsafe_allow_html=True)
+    st.sidebar.markdown(f"<div class='sidebar-required-note'>{html.escape(_t(language, 'required_note'))}</div>", unsafe_allow_html=True)
 
     return {
         "company_name": company_name,
         "company_rut": company_rut,
         "company_email": company_email,
         "target_level": target_level,
-        "budget_total_label": BUDGET_LABELS.get(str(budget_total_key), str(budget_total_key)),
+        "budget_total_label": budget_labels.get(str(budget_total_key), str(budget_total_key)),
         "budget_total_clp": BUDGET_TO_CLP[str(budget_total_key)],
         "profile_label": profile.get("label", ""),
     }
@@ -480,27 +657,27 @@ def _build_overrides(ui_cfg: dict[str, object]) -> dict[str, Any]:
     }
 
 
-def _missing_required_company_fields(company_type: str, ui_cfg: dict[str, object]) -> list[str]:
+def _missing_required_company_fields(company_type: str, ui_cfg: dict[str, object], language: str) -> list[str]:
     missing: list[str] = []
     if company_type == "__select__":
-        missing.append("Tipo de empresa")
+        missing.append(_t(language, "missing_company_type"))
     if not str(ui_cfg.get("company_name", "")).strip():
-        missing.append("Nombre empresa")
+        missing.append(_t(language, "missing_company_name"))
     rut_value = str(ui_cfg.get("company_rut", "")).strip()
     if not rut_value:
-        missing.append("RUT")
+        missing.append(_t(language, "missing_rut"))
     elif not _is_valid_rut(rut_value):
-        missing.append("RUT válido")
+        missing.append(_t(language, "missing_valid_rut"))
     if not str(ui_cfg.get("company_email", "")).strip():
-        missing.append("Correo")
+        missing.append(_t(language, "missing_email"))
     return missing
 
 
-def _clean_prompt(prompt: str, qnum: int) -> str:
+def _clean_prompt(prompt: str, qnum: int, language: str) -> str:
     text = str(prompt or "").strip()
-    text = re.sub(rf"^\s*pregunta\s*{qnum}\s*[:.)-]*\s*", "", text, flags=re.IGNORECASE)
-    text = re.sub(r"^\s*pregunta\s*\d+\s*[:.)-]*\s*", "", text, flags=re.IGNORECASE)
-    return text or f"Pregunta {qnum}"
+    text = re.sub(rf"^\s*(?:pregunta|question)\s*{qnum}\s*[:.)-]*\s*", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"^\s*(?:pregunta|question)\s*\d+\s*[:.)-]*\s*", "", text, flags=re.IGNORECASE)
+    return text or _t(language, "question_fallback", qnum=qnum)
 
 
 def _send_pdfs_via_gmail(
@@ -509,6 +686,7 @@ def _send_pdfs_via_gmail(
     company_name: str,
     company_email: str,
     pdf_paths: list[Path],
+    language: str,
 ) -> list[str]:
     cfg, _ = load_security_config(root)
     if not cfg.smtp_host:
@@ -518,7 +696,7 @@ def _send_pdfs_via_gmail(
 
     errors = validate_smtp_config(cfg, strict=True)
     if errors:
-        raise RuntimeError("Config SMTP incompleta: " + " | ".join(errors))
+        raise RuntimeError("Incomplete SMTP configuration: " + " | ".join(errors))
 
     targets: list[str] = []
     for raw in [str(company_email or "")]:
@@ -527,17 +705,13 @@ def _send_pdfs_via_gmail(
             if p not in targets:
                 targets.append(p)
     if not targets:
-        raise RuntimeError("Debes indicar un correo válido en los datos de empresa (campo Correo).")
+        raise RuntimeError(_t(language, "smtp_missing_email"))
 
     msg = EmailMessage()
-    msg["Subject"] = f"Roadmap customizado {company_name}"
+    msg["Subject"] = _t(language, "email_subject", company=company_name)
     msg["From"] = cfg.smtp_from
     msg["To"] = ", ".join(targets)
-    msg.set_content(
-        "Estimado/a,\n\n"
-        f"Se adjunta el Roadmap customizado para la empresa {company_name}.\n\n"
-        "*Este es un correo automático. No responder."
-    )
+    msg.set_content(_t(language, "email_body", company=company_name))
 
     for pdf_path in pdf_paths:
         if not pdf_path.exists():
@@ -556,79 +730,106 @@ def _send_pdfs_via_gmail(
     return targets
 
 
-def _render_downloads(result: dict[str, object]) -> None:
+def _render_downloads(result: dict[str, object], language: str) -> None:
     files: dict[str, str] = result.get("files", {}) if isinstance(result, dict) else {}
-    friendly_pdf: Path | None = None
-    for label, path_str in files.items():
+    pdf_es: Path | None = None
+    pdf_en: Path | None = None
+    for path_str in files.values():
         path = Path(path_str)
         if not path.exists() or path.suffix.lower() != ".pdf":
             continue
-        label_txt = str(label).lower()
         name_txt = path.name.lower()
-        if "amigable" in label_txt or "amigable" in name_txt:
-            friendly_pdf = path
-            break
+        if name_txt.endswith("_es.pdf"):
+            pdf_es = path
+        if name_txt.endswith("_en.pdf"):
+            pdf_en = path
 
-    if friendly_pdf is None:
+    if pdf_es is None and pdf_en is None:
         return
 
-    st.download_button(
-        label="Descargar PDF",
-        data=friendly_pdf.read_bytes(),
-        file_name=friendly_pdf.name,
-        mime="application/pdf",
-        use_container_width=True,
-    )
+    col_es, col_en = st.columns(2)
+    if pdf_es is not None:
+        with col_es:
+            st.download_button(
+                label=_t(language, "download_es"),
+                data=pdf_es.read_bytes(),
+                file_name=pdf_es.name,
+                mime="application/pdf",
+                use_container_width=True,
+            )
+    if pdf_en is not None:
+        with col_en:
+            st.download_button(
+                label=_t(language, "download_en"),
+                data=pdf_en.read_bytes(),
+                file_name=pdf_en.name,
+                mime="application/pdf",
+                use_container_width=True,
+            )
 
 
-def _render_last_result_summary(last: dict[str, object]) -> None:
-    st.success("Roadmap generado correctamente.")
+def _render_last_result_summary(last: dict[str, object], language: str) -> None:
+    st.success(_t(language, "generated_ok"))
     m1, m2, m3 = st.columns(3)
-    m1.metric("Puntaje Actual", last.get("current_score", 0))
-    m2.metric("Puntaje Objetivo", last.get("target_score", 0))
-    m3.metric("Acciones", last.get("actions", 0))
-    if str(last.get("email_status", "")).startswith("Enviado"):
-        st.info(f"Correo: {last['email_status']}")
+    m1.metric(_t(language, "current_score"), last.get("current_score", 0))
+    m2.metric(_t(language, "target_score"), last.get("target_score", 0))
+    m3.metric(_t(language, "actions"), last.get("actions", 0))
+    if str(last.get("email_status", "")).startswith(_t(language, "sent_prefix")):
+        st.info(f"{_t(language, 'email_label')}: {last['email_status']}")
     else:
-        st.warning(f"Correo: {last.get('email_status', 'No enviado')}")
+        st.warning(f"{_t(language, 'email_label')}: {last.get('email_status', _t(language, 'email_not_sent'))}")
 
 
 def main() -> None:
-    st.set_page_config(page_title="RoadmapGenerator Captura", layout="wide")
+    st.set_page_config(page_title="RoadmapGenerator", layout="wide")
     _render_styles()
 
-    st.sidebar.header("Configuracion Inicial")
+    if "ui_language" not in st.session_state:
+        st.session_state["ui_language"] = "es"
+
+    qp_lang = st.query_params.get("ui_lang")
+    if qp_lang:
+        st.session_state["ui_language"] = _lang(str(qp_lang))
+
+    language = _lang(str(st.session_state.get("ui_language", "es")))
+
+    top_left, top_right = st.columns([8, 2])
+    with top_right:
+        _render_language_flag(language)
+
+    st.sidebar.header(_t(language, "setup_header"))
     company_type_labels = {
-        "__select__": "------Seleccione------",
-        "small": "Pequeña empresa",
-        "medium": "Mediana empresa",
+        "__select__": _t(language, "company_type_select"),
+        "small": _t(language, "company_small"),
+        "medium": _t(language, "company_medium"),
     }
     company_type = st.sidebar.selectbox(
-        "Tipo de empresa*",
+        _t(language, "company_type"),
         options=["__select__", "small", "medium"],
         format_func=lambda x: company_type_labels.get(x, x),
     )
     st.sidebar.markdown("---")
-    title_company_type = "Empresa" if company_type == "__select__" else company_type_labels.get(company_type, "Empresa")
-    st.title(f"RoadmapGenerator | Captura De Datos {title_company_type}")
+    title_company_type = _t(language, "title_company_default") if company_type == "__select__" else company_type_labels.get(company_type, _t(language, "title_company_default"))
+    with top_left:
+        st.title(f"{_t(language, 'main_title')} {title_company_type}")
 
     if company_type == "__select__":
-        st.info("Selecciona un tipo de empresa para continuar.")
+        st.info(_t(language, "select_company_type"))
         return
 
     try:
-        profile = _load_profile_cached(str(ROOT), company_type)
+        profile = _load_profile_cached(str(ROOT), company_type, language)
     except Exception as exc:
-        st.error(f"No fue posible cargar el perfil '{company_type}': {exc}")
+        st.error(f"{_t(language, 'cannot_load_profile')} '{company_type}': {exc}")
         return
 
     questions: list[dict[str, Any]] = [dict(x) for x in profile.get("questions", [])]
     max_level = max((len(q.get("level_labels", [])) for q in questions), default=5)
-    ui_cfg = _render_sidebar(profile, max_level=max_level)
-    missing_required = _missing_required_company_fields(company_type, ui_cfg)
+    ui_cfg = _render_sidebar(profile, max_level=max_level, language=language)
+    missing_required = _missing_required_company_fields(company_type, ui_cfg, language)
     if missing_required:
-        st.warning("Completa los campos obligatorios del panel izquierdo antes de responder el cuestionario.")
-        st.caption("Faltantes: " + ", ".join(missing_required))
+        st.warning(_t(language, "missing_required_warning"))
+        st.caption(_t(language, "missing_prefix") + " " + ", ".join(missing_required))
         return
 
     col1, col2, col3 = st.columns(3)
@@ -636,7 +837,7 @@ def main() -> None:
         st.markdown(
             f"""
 <div class="app-card summary-card">
-  <div class="summary-label">Preguntas</div>
+  <div class="summary-label">{_t(language, "questions")}</div>
   <div class="summary-value">{len(questions)}</div>
 </div>
             """,
@@ -646,7 +847,7 @@ def main() -> None:
         st.markdown(
             f"""
 <div class="app-card summary-card">
-  <div class="summary-label">Perfil</div>
+  <div class="summary-label">{_t(language, "profile")}</div>
   <div class="summary-value summary-value-text">{html.escape(str(ui_cfg.get("profile_label", "")))}</div>
 </div>
             """,
@@ -656,36 +857,36 @@ def main() -> None:
         st.markdown(
             f"""
 <div class="app-card summary-card">
-  <div class="summary-label">Nivel Objetivo</div>
+  <div class="summary-label">{_t(language, "target_level_card")}</div>
   <div class="summary-value">{int(ui_cfg["target_level"])}</div>
 </div>
             """,
             unsafe_allow_html=True,
         )
 
-    st.subheader("Cuestionario")
+    st.subheader(_t(language, "questionnaire"))
     for q in sorted(questions, key=lambda row: int(row.get("number", 0))):
         qnum = int(q["number"])
         options = [str(x) for x in q.get("options", [])]
-        prompt = _clean_prompt(str(q.get("prompt", "")), qnum)
+        prompt = _clean_prompt(str(q.get("prompt", "")), qnum, language)
 
-        st.markdown(f"<div class='question-label'>Pregunta {qnum}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='question-label'>{_t(language, 'question_fallback', qnum=qnum)}</div>", unsafe_allow_html=True)
         st.markdown(f"<div class='question-text'>{html.escape(prompt)}</div>", unsafe_allow_html=True)
         st.radio(
-            label=f"Respuesta {qnum}",
+            label=f"{_t(language, 'answer')} {qnum}",
             options=list(range(len(options))),
             format_func=lambda i, rows=options: rows[i],
             key=f"q_{company_type}_{qnum}",
             label_visibility="collapsed",
         )
 
-    if st.button("Generar Roadmap", type="primary", use_container_width=True):
+    if st.button(_t(language, "generate"), type="primary", use_container_width=True):
         try:
             answers = _collect_answers(company_type, questions)
             engine_cfg = build_engine_config(None, _build_overrides(ui_cfg))
 
-            with st.spinner("Generando roadmap y archivos de salida..."):
-                payload = build_roadmap(
+            with st.spinner(_t(language, "generating")):
+                payload_es = build_roadmap(
                     root=ROOT,
                     company_type=company_type,
                     answers=answers,
@@ -694,7 +895,20 @@ def main() -> None:
                     company_rut=str(ui_cfg["company_rut"]),
                     company_email=str(ui_cfg["company_email"]),
                     engine_cfg=engine_cfg,
+                    language="es",
                 )
+                payload_en = build_roadmap(
+                    root=ROOT,
+                    company_type=company_type,
+                    answers=answers,
+                    target_level=int(ui_cfg["target_level"]),
+                    company_name=str(ui_cfg["company_name"]),
+                    company_rut=str(ui_cfg["company_rut"]),
+                    company_email=str(ui_cfg["company_email"]),
+                    engine_cfg=engine_cfg,
+                    language="en",
+                )
+                payload_selected = payload_en if language == "en" else payload_es
 
                 generated_at = datetime.now()
                 stamp = generated_at.strftime("%Y%m%d_%H%M%S")
@@ -707,44 +921,55 @@ def main() -> None:
                 result_trace_json = run_dir / "roadmap_traceability.json"
                 result_trace_csv = run_dir / "roadmap_traceability.csv"
                 result_pdf_tech = run_dir / "roadmap_tecnico.pdf"
-                result_pdf_friendly = run_dir / _friendly_pdf_filename(
+                result_pdf_es = run_dir / _friendly_pdf_filename(
                     company_type=company_type,
                     company_name=str(ui_cfg["company_name"]),
                     generated_at=generated_at,
+                    language="es",
+                )
+                result_pdf_en = run_dir / _friendly_pdf_filename(
+                    company_type=company_type,
+                    company_name=str(ui_cfg["company_name"]),
+                    generated_at=generated_at,
+                    language="en",
                 )
 
-                payload_export = dict(payload)
+                payload_export = dict(payload_selected)
                 payload_export.pop("catalog_validation_report", None)
                 result_json.write_text(json.dumps(payload_export, ensure_ascii=False, indent=2), encoding="utf-8")
-                save_txt(payload, result_txt)
-                save_traceability_json(payload, result_trace_json)
-                save_traceability_csv(payload, result_trace_csv)
+                save_txt(payload_selected, result_txt)
+                save_traceability_json(payload_selected, result_trace_json)
+                save_traceability_csv(payload_selected, result_trace_csv)
 
                 generated_files = {
                     "JSON": str(result_json),
                     "TXT": str(result_txt),
-                    "Trazabilidad JSON": str(result_trace_json),
-                    "Trazabilidad CSV": str(result_trace_csv),
+                    "Traceability JSON": str(result_trace_json),
+                    "Traceability CSV": str(result_trace_csv),
                 }
 
-                export_technical_pdf(payload, result_pdf_tech)
-                export_friendly_pdf(payload, result_pdf_friendly)
-                generated_files["PDF Tecnico"] = str(result_pdf_tech)
-                generated_files["PDF Amigable"] = str(result_pdf_friendly)
+                export_technical_pdf(payload_selected, result_pdf_tech)
+                export_friendly_pdf_es(payload_es, result_pdf_es)
+                export_friendly_pdf_en(payload_en, result_pdf_en)
+                generated_files["Technical PDF"] = str(result_pdf_tech)
+                generated_files[_t(language, "friendly_label_es")] = str(result_pdf_es)
+                generated_files[_t(language, "friendly_label_en")] = str(result_pdf_en)
 
-                email_status = "No enviado"
+                selected_pdf = result_pdf_en if language == "en" else result_pdf_es
+                email_status = _t(language, "email_not_sent")
                 try:
                     recipients = _send_pdfs_via_gmail(
                         root=ROOT,
                         company_name=str(ui_cfg["company_name"]),
                         company_email=str(ui_cfg["company_email"]),
-                        pdf_paths=[result_pdf_friendly],
+                        pdf_paths=[selected_pdf],
+                        language=language,
                     )
-                    email_status = f"Enviado a: {', '.join(recipients)}"
+                    email_status = f"{_t(language, 'sent_prefix')}: {', '.join(recipients)}"
                 except Exception as email_exc:
-                    email_status = f"No enviado: {email_exc}"
+                    email_status = f"{_t(language, 'not_sent_prefix')}: {email_exc}"
 
-                result = payload.get("result", {})
+                result = payload_selected.get("result", {})
                 st.session_state["ui_last_result"] = {
                     "files": generated_files,
                     "generated_at": result.get("timestamp", ""),
@@ -752,14 +977,16 @@ def main() -> None:
                     "target_score": result.get("target_score", 0),
                     "actions": len(result.get("roadmap_entries", [])),
                     "email_status": email_status,
+                    "language": language,
                 }
 
         except Exception as exc:
-            st.error(f"No se pudo generar el roadmap: {exc}")
+            st.error(f"{_t(language, 'roadmap_error')}: {exc}")
 
     if "ui_last_result" in st.session_state:
-        _render_last_result_summary(st.session_state["ui_last_result"])
-        _render_downloads(st.session_state["ui_last_result"])
+        current_lang = _lang(str(st.session_state["ui_last_result"].get("language", language)))
+        _render_last_result_summary(st.session_state["ui_last_result"], current_lang)
+        _render_downloads(st.session_state["ui_last_result"], current_lang)
 
 
 if __name__ == "__main__":

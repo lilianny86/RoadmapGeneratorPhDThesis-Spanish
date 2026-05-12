@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 import csv
@@ -12,6 +12,15 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from catalog_quality import build_catalog_v3, catalog_report_to_text
+from en_localization import (
+    localize_domain,
+    localize_kda,
+    localize_kpi,
+    localize_option_text,
+    localize_question_prompt,
+    localize_solution_description,
+    localize_solution_name,
+)
 from pdf_export import export_friendly_pdf, export_technical_pdf
 from recommendation_engine import build_engine_config, match_solutions, optimize_recommendations
 from security_config import load_security_config, scan_hardcoded_secrets, validate_smtp_config
@@ -29,9 +38,9 @@ def clean_solution_description(text: object) -> str:
     compact = re.sub(r"\s+", " ", str(text or "")).strip()
     if not compact:
         return ""
-    # Mantiene solo el detalle accionable y evita fragmentos recortados con "..."
-    # que vienen del bloque explicativo de transicion de KPI.
-    marker = re.search(r"\bSe propone para la transici[oó]n\b", compact, flags=re.IGNORECASE)
+    # Keep only actionable detail and avoid truncated fragments with "...".
+    # These fragments come from the KPI transition explanatory block.
+    marker = re.search(r"\b(?:Se propone para la transici[o\u00f3]n|It is proposed for the transition)\b", compact, flags=re.IGNORECASE)
     if marker:
         compact = compact[: marker.start()].strip()
     compact = re.sub(r"\s*,\s*$", "", compact).strip()
@@ -111,7 +120,7 @@ def read_docx_questions(path: Path) -> list[dict[str, object]]:
     prompt = ""
     opts: list[str] = []
     for line in paras:
-        if line.startswith("Pregunta "):
+        if line.startswith("Question ") or line.startswith("Pregunta "):
             if prompt:
                 q.append({"prompt": prompt, "options": opts})
             prompt = line
@@ -140,15 +149,15 @@ def to_float(txt: str, default: float = 1.0) -> float:
 
 def profile_cfg(profile: str) -> dict[str, str]:
     cfg = {
-        "small": {"label": "Pequeña empresa", "q_file": "Cuestionario pequenas empresas.docx", "model_hint": "pequen", "weight_hint": "pequen", "sol_hint": "pequen"},
-        "medium": {"label": "Mediana empresa", "q_file": "Cuestionario medianas empresas.docx", "model_hint": "median", "weight_hint": "median", "sol_hint": "median"},
+        "small": {"label": "Small enterprise", "q_file": "Cuestionario pequenas empresas.docx", "model_hint": "pequen", "weight_hint": "pequen", "sol_hint": "pequen"},
+        "medium": {"label": "Medium-sized enterprise", "q_file": "Cuestionario medianas empresas.docx", "model_hint": "median", "weight_hint": "median", "sol_hint": "median"},
     }
     if profile not in cfg:
         raise RuntimeError("company type must be small or medium")
     return cfg[profile]
 
 
-def load_profile_data(root: Path, profile: str) -> dict[str, object]:
+def load_profile_data(root: Path, profile: str, language: str = "es") -> dict[str, object]:
     cfg = profile_cfg(profile)
     model_xlsx = root / "assets" / "modelo_de_madurez" / "MM Adopcion-Tec-Pymes v2.0 validado expertos INIA.xlsx"
     weights_xlsx = root / "assets" / "modelo_de_madurez" / "Ponderaciones por KPI.xlsx"
@@ -196,9 +205,23 @@ def load_profile_data(root: Path, profile: str) -> dict[str, object]:
         qd = questionnaire[i]
         key = (norm(qm["domain"]), norm(qm["kda"]), norm(qm["kpi"]))
         weight = weights.get(key, 1.0)
-        options = [str(o).strip() for o in qd["options"] if str(o).strip()]
+        raw_options = [str(o).strip() for o in qd["options"] if str(o).strip()]
+        options = [localize_option_text(o, language=language) for o in raw_options]
         mapping = [min(idx + 1, len(qm["level_labels"])) for idx in range(len(options))]
-        questions.append({"number": i + 1, "domain": qm["domain"], "kda": qm["kda"], "kpi": qm["kpi"], "weight": weight, "prompt": qd["prompt"], "options": options, "level_labels": qm["level_labels"], "level_texts": qm["level_texts"], "mapping": mapping})
+        questions.append(
+            {
+                "number": i + 1,
+                "domain": qm["domain"],
+                "kda": qm["kda"],
+                "kpi": qm["kpi"],
+                "weight": weight,
+                "prompt": localize_question_prompt(str(qd["prompt"]), i + 1, language=language),
+                "options": options,
+                "level_labels": qm["level_labels"],
+                "level_texts": qm["level_texts"],
+                "mapping": mapping,
+            }
+        )
 
     return {"label": cfg["label"], "sol_hint": cfg["sol_hint"], "questions": questions}
 
@@ -300,21 +323,21 @@ def load_solutions(root: Path) -> tuple[list[dict[str, object]], dict[str, objec
 
 def _horizon(plazo: str) -> str:
     t = norm(plazo)
-    if "corto" in t:
-        return "Corto plazo"
-    if "mediano" in t:
-        return "Mediano plazo"
-    if "largo" in t:
-        return "Largo plazo"
+    if "corto" in t or "short" in t:
+        return "Short term"
+    if "mediano" in t or "medium" in t:
+        return "Medium term"
+    if "largo" in t or "long" in t:
+        return "Long term"
     months = _extract_timeline_months(plazo)
     if months is not None:
         if months <= 3:
-            return "Corto plazo"
+            return "Short term"
         if months <= 6:
-            return "Mediano plazo"
+            return "Medium term"
         if months <= 12:
-            return "Largo plazo"
-    return "Sin clasificar"
+            return "Long term"
+    return "Unclassified"
 
 
 def _extract_timeline_months(value: object) -> float | None:
@@ -334,7 +357,7 @@ def _extract_timeline_months(value: object) -> float | None:
 
 def _horizon_order(plazo: str) -> int:
     p = _horizon(plazo)
-    return {"Corto plazo": 1, "Mediano plazo": 2, "Largo plazo": 3}.get(p, 4)
+    return {"Short term": 1, "Medium term": 2, "Long term": 3}.get(p, 4)
 
 
 def weighted_avg(values: list[tuple[float, float]]) -> float:
@@ -422,8 +445,9 @@ def build_roadmap(
     company_rut: str,
     company_email: str,
     engine_cfg: object,
+    language: str = "es",
 ) -> dict[str, object]:
-    profile = load_profile_data(root, company_type)
+    profile = load_profile_data(root, company_type, language=language)
     solutions, catalog_report = load_solutions(root)
     questions = profile["questions"]
 
@@ -459,9 +483,12 @@ def build_roadmap(
         current = mapping[opt - 1] if mapping else min(opt, len(labels))
         current = max(1, min(current, len(labels)))
         target = min(target_level, len(labels))
+        domain_localized = localize_domain(str(q["domain"]), language=language)
+        kda_localized = localize_kda(str(q["kda"]), language=language)
+        kpi_localized = localize_kpi(str(q["kpi"]), language=language)
 
-        domain_current[q["domain"]].append((float(current), float(q["weight"])))
-        domain_target[q["domain"]].append((float(target), float(q["weight"])))
+        domain_current[domain_localized].append((float(current), float(q["weight"])))
+        domain_target[domain_localized].append((float(target), float(q["weight"])))
 
         if target <= current:
             continue
@@ -472,7 +499,24 @@ def build_roadmap(
         t_label = labels[target - 1]
         transition = f"{c_label}->{t_label}"
 
-        kpi_results.append({"question_number": n, "domain": q["domain"], "kda": q["kda"], "kpi": q["kpi"], "weight": q["weight"], "current_level": current, "target_level": target, "current_label": c_label, "target_label": t_label, "gap": gap, "priority": priority, "selected_option_text": options[opt - 1], "current_description": texts[current - 1] if current - 1 < len(texts) else "", "target_description": texts[target - 1] if target - 1 < len(texts) else ""})
+        kpi_results.append(
+            {
+                "question_number": n,
+                "domain": domain_localized,
+                "kda": kda_localized,
+                "kpi": kpi_localized,
+                "weight": q["weight"],
+                "current_level": current,
+                "target_level": target,
+                "current_label": c_label,
+                "target_label": t_label,
+                "gap": gap,
+                "priority": priority,
+                "selected_option_text": options[opt - 1],
+                "current_description": texts[current - 1] if current - 1 < len(texts) else "",
+                "target_description": texts[target - 1] if target - 1 < len(texts) else "",
+            }
+        )
 
         matches = match_solutions(
             solutions,
@@ -486,28 +530,29 @@ def build_roadmap(
             max_candidates=int(getattr(engine_cfg, "max_candidates_per_kpi", 4)),
         )
         for s in matches:
+            cleaned_description = clean_solution_description(s.get("description", ""))
             candidate_entries.append(
                 {
-                    "domain": q["domain"],
-                    "kda": q["kda"],
-                    "kpi": q["kpi"],
+                    "domain": domain_localized,
+                    "kda": kda_localized,
+                    "kpi": kpi_localized,
                     "transition": transition,
                     "plazo": _horizon(str(s.get("plazo", ""))),
-                    "solution_name": s.get("name", ""),
-                    "solution_description": clean_solution_description(s.get("description", "")),
+                    "solution_name": localize_solution_name(str(s.get("name", "")), language=language),
+                    "solution_description": localize_solution_description(cleaned_description, language=language),
                     "provider": s.get("provider", ""),
                     "provider_url": s.get("provider_url", ""),
                     "source": s.get("source", ""),
                     "source_url": s.get("source_url", ""),
-                    "price": s.get("price", "No informado") or "No informado",
+                    "price": s.get("price", "No informado" if str(language).lower() != "en" else "Not reported") or ("No informado" if str(language).lower() != "en" else "Not reported"),
                     "price_type": s.get("price_type", "unknown"),
                     "price_min_clp": s.get("price_min_clp"),
                     "price_max_clp": s.get("price_max_clp"),
-                    "impact_level": s.get("impact_level", "Medio"),
+                    "impact_level": s.get("impact_level", "Medio" if str(language).lower() != "en" else "Medium"),
                     "impact_score": s.get("impact_score", 3.0),
-                    "effort_level": s.get("effort_level", "Medio"),
+                    "effort_level": s.get("effort_level", "Medio" if str(language).lower() != "en" else "Medium"),
                     "effort_score": s.get("effort_score", 3.0),
-                    "risk_level": s.get("risk_level", "Medio"),
+                    "risk_level": s.get("risk_level", "Medio" if str(language).lower() != "en" else "Medium"),
                     "risk_score": s.get("risk_score", 3.0),
                     "dependencies": s.get("dependencies", []),
                     "priority": priority,
@@ -596,22 +641,22 @@ def save_txt(payload: dict[str, object], path: Path) -> None:
     cat = r.get("catalog_summary", {}) if isinstance(r, dict) else {}
     eng = r.get("engine_summary", {}) if isinstance(r, dict) else {}
     lines = [
-        "RESUMEN DEL ROADMAP",
+        "ROADMAP SUMMARY",
         "",
-        f"Empresa: {c.get('name','')}",
+        f"Company: {c.get('name','')}",
         f"Tipo: {c.get('company_type','')}",
         f"RUT: {c.get('rut','')}",
-        f"Correo: {c.get('email','')}",
+        f"Email: {c.get('email','')}",
         f"Generado: {r.get('timestamp','')}",
         "",
-        f"Puntaje actual: {r.get('current_score',0)}",
-        f"Puntaje objetivo: {r.get('target_score',0)}",
-        f"Nivel objetivo: {r.get('target_level_index',0)}",
+        f"Current score: {r.get('current_score',0)}",
+        f"Target score: {r.get('target_score',0)}",
+        f"Target level: {r.get('target_level_index',0)}",
         "",
-        f"Catálogo ({cat.get('schema_version','catalog_v3.0')}): "
-        f"filas={cat.get('rows_processed',0)}, "
-        f"errores={cat.get('error_count',0)}, "
-        f"advertencias={cat.get('warning_count',0)}",
+        f"Catalog ({cat.get('schema_version','catalog_v3.0')}): "
+        f"rows={cat.get('rows_processed',0)}, "
+        f"errors={cat.get('error_count',0)}, "
+        f"warnings={cat.get('warning_count',0)}",
         "",
         f"Motor recomendaciones ({eng.get('engine_version','eng_v1.0')}): "
         f"candidatas={eng.get('candidate_count',0)}, "
@@ -625,7 +670,7 @@ def save_txt(payload: dict[str, object], path: Path) -> None:
             f"- [{row['priority']}] {row['kpi']} | {row['current_label']} -> {row['target_label']} | brecha={row['gap']}"
         )
     lines.append("")
-    lines.append("Acciones del roadmap:")
+    lines.append("Roadmap actions:")
     for row in r.get("roadmap_entries", []):
         expl = row.get("engine_explanation", {})
         drivers = ", ".join(expl.get("main_drivers", [])[:2]) if isinstance(expl, dict) else ""
@@ -638,7 +683,7 @@ def save_txt(payload: dict[str, object], path: Path) -> None:
 
 def _slug(value: str) -> str:
     clean = re.sub(r"[^a-zA-Z0-9]+", "-", norm(value))
-    return clean.strip("-") or "empresa"
+    return clean.strip("-") or "company"
 
 
 def save_preview(payload: dict[str, object], path: Path) -> None:
@@ -713,7 +758,7 @@ def apply_roadmap_edits(payload: dict[str, object], edits_path: Path) -> dict[st
     edits = json.loads(edits_path.read_text(encoding="utf-8"))
     candidate_rows = edits.get("roadmap_entries") if isinstance(edits, dict) else edits
     if not isinstance(candidate_rows, list):
-        raise RuntimeError("El archivo de edición debe contener una lista en 'roadmap_entries' o una lista raíz.")
+        raise RuntimeError("The edit file must contain a list in 'roadmap_entries' or a root list.")
 
     valid_rows: list[dict[str, object]] = []
     for row in candidate_rows:
@@ -728,7 +773,7 @@ def apply_roadmap_edits(payload: dict[str, object], edits_path: Path) -> dict[st
         valid_rows.append(row)
 
     if not valid_rows:
-        raise RuntimeError("No hay acciones válidas en el archivo de edición.")
+        raise RuntimeError("No valid actions were found in the edit file.")
 
     payload_out = dict(payload)
     result = dict(payload_out.get("result", {}))
@@ -751,7 +796,7 @@ def apply_roadmap_edits(payload: dict[str, object], edits_path: Path) -> dict[st
 
 def autosave_session(payload: dict[str, object], session_dir: Path) -> Path:
     company = payload.get("company", {})
-    name = str(company.get("name", "empresa"))
+    name = str(company.get("name", "company"))
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     session_path = session_dir / f"{_slug(name)}_{stamp}.json"
     session_dir.mkdir(parents=True, exist_ok=True)
@@ -775,7 +820,7 @@ def _rebuild_engine_budget_summary(entries: list[dict[str, object]]) -> tuple[fl
         if cost < 0:
             continue
         total += cost
-        horizon = str(row.get("plazo", "Sin clasificar"))
+        horizon = str(row.get("plazo", "Unclassified"))
         by_horizon[horizon] = by_horizon.get(horizon, 0.0) + cost
     by_horizon = {k: round(v, 2) for k, v in by_horizon.items()}
     return round(total, 2), by_horizon
@@ -786,7 +831,7 @@ def cli(argv: list[str] | None = None) -> int:
     parser.add_argument("--company-type", choices=["small", "medium"], required=True)
     parser.add_argument("--target-level", type=int, required=True)
     parser.add_argument("--answers-file", type=Path, required=True)
-    parser.add_argument("--company-name", default="Empresa")
+    parser.add_argument("--company-name", default="Company")
     parser.add_argument("--company-rut", default="")
     parser.add_argument("--company-email", default="")
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parent)
@@ -811,39 +856,39 @@ def cli(argv: list[str] | None = None) -> int:
         "--output-preview-json",
         type=Path,
         default=None,
-        help="Genera una vista previa editable del roadmap (JSON liviano).",
+        help="Generates an editable preview of the roadmap (lightweight JSON).",
     )
     parser.add_argument(
         "--apply-edits-file",
         type=Path,
         default=None,
-        help="Aplica ediciones manuales desde un JSON con roadmap_entries.",
+        help="Applies manual edits from a JSON file with roadmap_entries.",
     )
     parser.add_argument(
         "--autosave-session",
         action="store_true",
-        help="Guarda un snapshot de la ejecucion para trazabilidad.",
+        help="Saves an execution snapshot for traceability.",
     )
     parser.add_argument(
         "--session-dir",
         type=Path,
         default=None,
-        help="Directorio para snapshots de sesion (por defecto outputs/sessions).",
+        help="Directory for session snapshots (default: outputs/sessions).",
     )
     parser.add_argument(
         "--skip-pdf",
         action="store_true",
-        help="Omite la generacion de PDF para iterar mas rapido.",
+        help="Skip PDF generation to iterate faster.",
     )
     parser.add_argument(
         "--strict-catalog",
         action="store_true",
-        help="Falla la ejecución si el catálogo tiene errores de validación.",
+        help="Fail execution if the catalog contains validation errors.",
     )
     parser.add_argument(
         "--security-check",
         action="store_true",
-        help="Ejecuta chequeo de seguridad (SMTP por entorno + detección de secretos hardcodeados).",
+        help="Runs security checks (environment SMTP validation + hardcoded-secret detection).",
     )
     args = parser.parse_args(argv)
 
@@ -851,7 +896,7 @@ def cli(argv: list[str] | None = None) -> int:
     out_json = args.output_json or (root / "outputs" / "roadmap_result.json")
     out_txt = args.output_txt or (root / "outputs" / "roadmap_result.txt")
     out_pdf_tech = args.output_pdf_tech or (root / "outputs" / "roadmap_tecnico.pdf")
-    out_pdf_friendly = args.output_pdf_friendly or (root / "outputs" / "roadmap_amigable.pdf")
+    out_pdf_friendly = args.output_pdf_friendly or (root / "outputs" / "roadmap_friendly.pdf")
     out_catalog_report_json = args.output_catalog_report_json or (root / "outputs" / "catalog_validation_report.json")
     out_catalog_report_txt = args.output_catalog_report_txt or (root / "outputs" / "catalog_validation_report.txt")
     out_trace_json = args.output_trace_json or (root / "outputs" / "roadmap_traceability.json")
@@ -871,15 +916,15 @@ def cli(argv: list[str] | None = None) -> int:
     if args.security_check:
         findings = scan_hardcoded_secrets(root)
         if findings:
-            print("[SEC] Se detectaron posibles secretos hardcodeados:")
+            print("[SEC] Potential hardcoded secrets were detected:")
             for row in findings:
                 print(f"[SEC] - {row}")
             return 2
-        print("[SEC] Chequeo de seguridad OK (sin patrones de secretos hardcodeados).")
+        print("[SEC] Security check OK (no hardcoded secret patterns found).")
         if not sec_cfg.require_smtp:
-            print("[SEC] ROADMAP_REQUIRE_SMTP=0 (modo local). SMTP no es obligatorio en este entorno.")
+            print("[SEC] ROADMAP_REQUIRE_SMTP=0 (local mode). SMTP is not mandatory in this environment.")
         if env_file is not None:
-            print(f"[SEC] Archivo .env cargado desde: {env_file}")
+            print(f"[SEC] .env file loaded from: {env_file}")
 
     engine_cfg = build_engine_config(
         engine_config_file,
@@ -910,7 +955,7 @@ def cli(argv: list[str] | None = None) -> int:
     catalog_summary = payload.get("result", {}).get("catalog_summary", {})
 
     if args.strict_catalog and int(catalog_summary.get("error_count", 0)) > 0:
-        print(f"[DATA] Catálogo inválido: {catalog_summary.get('error_count', 0)} errores.")
+        print(f"[DATA] Invalid catalog: {catalog_summary.get('error_count', 0)} errors.")
         return 3
 
     if edits_file is not None:
@@ -953,7 +998,7 @@ def cli(argv: list[str] | None = None) -> int:
         save_preview(payload, out_preview)
     if args.autosave_session:
         autosaved = autosave_session(payload, session_dir)
-        print(f"[UX] Sesion guardada en: {autosaved}")
+        print(f"[UX] Session saved to: {autosaved}")
     if not args.skip_pdf:
         export_technical_pdf(payload, out_pdf_tech)
         export_friendly_pdf(payload, out_pdf_friendly)
@@ -961,19 +1006,19 @@ def cli(argv: list[str] | None = None) -> int:
     print(f"JSON generado en: {out_json}")
     print(f"TXT generado en: {out_txt}")
     if out_preview is not None:
-        print(f"Preview JSON generado en: {out_preview}")
-    print(f"Trazabilidad (JSON) generada en: {out_trace_json}")
-    print(f"Trazabilidad (CSV) generada en: {out_trace_csv}")
+        print(f"Preview JSON generated at: {out_preview}")
+    print(f"Traceability (JSON) generated at: {out_trace_json}")
+    print(f"Traceability (CSV) generated at: {out_trace_csv}")
     if not args.skip_pdf:
-        print(f"PDF técnico generado en: {out_pdf_tech}")
-        print(f"PDF amigable generado en: {out_pdf_friendly}")
+        print(f"Technical PDF generated at: {out_pdf_tech}")
+        print(f"Friendly PDF generated at: {out_pdf_friendly}")
     else:
-        print("[UX] PDFs omitidos por --skip-pdf")
-    print(f"Reporte catálogo (JSON) generado en: {out_catalog_report_json}")
-    print(f"Reporte catálogo (TXT) generado en: {out_catalog_report_txt}")
+        print("[UX] PDFs skipped by --skip-pdf")
+    print(f"Catalog report (JSON) generated at: {out_catalog_report_json}")
+    print(f"Catalog report (TXT) generated at: {out_catalog_report_txt}")
     print(
-        f"[DATA] Catalogo v3 -> filas={catalog_summary.get('rows_processed',0)} "
-        f"errores={catalog_summary.get('error_count',0)} advertencias={catalog_summary.get('warning_count',0)}"
+        f"[DATA] Catalog v3 -> rows={catalog_summary.get('rows_processed',0)} "
+        f"errors={catalog_summary.get('error_count',0)} warnings={catalog_summary.get('warning_count',0)}"
     )
     engine_summary = payload.get("result", {}).get("engine_summary", {})
     print(

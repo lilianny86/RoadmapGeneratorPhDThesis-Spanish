@@ -26,11 +26,11 @@ PALETTE = {
     "success": (0.28, 0.58, 0.30),
 }
 
-HORIZON_ORDER = ["Corto plazo", "Mediano plazo", "Largo plazo", "Sin clasificar"]
+HORIZON_ORDER = ["Short term", "Medium term", "Long term", "Unclassified"]
 HORIZON_RANGES = {
-    "Corto plazo": "1-3 meses",
-    "Mediano plazo": "3-6 meses",
-    "Largo plazo": "6-12 meses",
+    "Short term": "1-3 months",
+    "Medium term": "3-6 months",
+    "Long term": "6-12 months",
 }
 _TRAILING_CONNECTOR_WORDS = {
     "a",
@@ -81,7 +81,7 @@ def _short(text: str, max_len: int = 170) -> str:
     if not text:
         return ""
     compact = re.sub(r"\s+", " ", str(text)).strip()
-    marker = re.search(r"\bSe propone para la transici[oó]n\b", compact, flags=re.IGNORECASE)
+    marker = re.search(r"\b(?:Se propone para la transici[o\u00f3]n|It is proposed for the transition)\b", compact, flags=re.IGNORECASE)
     if marker:
         compact = compact[: marker.start()].strip()
     compact = re.sub(r"\s*,\s*$", "", compact).strip()
@@ -172,43 +172,43 @@ def _solution_urls(row: dict[str, object], *, max_urls: int = 1) -> list[str]:
 
 def _horizon_order(plazo: str) -> int:
     key = _norm(plazo)
-    if "corto" in key:
+    if "corto" in key or "short" in key:
         return 1
-    if "mediano" in key:
+    if "mediano" in key or "medium" in key:
         return 2
-    if "largo" in key:
+    if "largo" in key or "long" in key:
         return 3
     return 4
 
 
 def _horizon_color(plazo: str) -> tuple[float, float, float]:
     key = _norm(plazo)
-    if "corto" in key:
+    if "corto" in key or "short" in key:
         return PALETTE["short"]
-    if "mediano" in key:
+    if "mediano" in key or "medium" in key:
         return PALETTE["medium"]
-    if "largo" in key:
+    if "largo" in key or "long" in key:
         return PALETTE["long"]
     return PALETTE["slate"]
 
 
 def _canonical_horizon(value: str) -> str:
     key = _norm(value)
-    if "corto" in key:
-        return "Corto plazo"
-    if "mediano" in key:
-        return "Mediano plazo"
-    if "largo" in key:
-        return "Largo plazo"
+    if "corto" in key or "short" in key:
+        return "Short term"
+    if "mediano" in key or "medium" in key:
+        return "Medium term"
+    if "largo" in key or "long" in key:
+        return "Long term"
     months = _extract_timeline_months(value)
     if months is not None:
         if months <= 3:
-            return "Corto plazo"
+            return "Short term"
         if months <= 6:
-            return "Mediano plazo"
+            return "Medium term"
         if months <= 12:
-            return "Largo plazo"
-    return "Sin clasificar"
+            return "Long term"
+    return "Unclassified"
 
 
 def _extract_timeline_months(value: object) -> float | None:
@@ -257,7 +257,7 @@ def _parse_clp_amount(price_value: object) -> float | None:
 
 def _fmt_clp(value: float | None) -> str:
     if value is None:
-        return "No estimable"
+        return "Not estimable"
     rounded = int(round(max(value, 0.0)))
     return "$ " + f"{rounded:,}".replace(",", ".")
 
@@ -301,7 +301,7 @@ class SimplePdf:
 
     @staticmethod
     def _latin1(text: str) -> str:
-        # Conserva caracteres Unicode de español y los mapea a WinAnsi (cp1252) para PDF.
+        # Preserve Spanish Unicode characters and map them to WinAnsi (cp1252) for PDF output.
         cleaned = unicodedata.normalize("NFC", str(text))
         compact = re.sub(r"\s+", " ", cleaned).strip()
         return compact.encode("cp1252", "replace").decode("latin-1")
@@ -384,7 +384,7 @@ class SimplePdf:
                 lines.append(current)
                 current = word
                 continue
-            # Palabra muy larga: partirla para evitar que se corte fuera de página.
+            # Very long word: split it to prevent overflow beyond page margins.
             chunk = word
             while chunk and self._approx_text_width(chunk, size=size, bold=bold) > max_width:
                 split_at = max(4, int(max_width / max(size * 0.55, 0.1)))
@@ -606,7 +606,7 @@ class SimplePdf:
         total = len(self.pages)
         for i, ops in enumerate(self.pages, start=1):
             footer_y = 24.0
-            footer_text = f"Página {i} de {total}"
+            footer_text = f"Page {i} of {total}"
             width_est = len(footer_text) * 9.0 * 0.5
             x = (self.page_width - width_est) / 2.0
             ops.append(
@@ -683,7 +683,7 @@ def _render_friendly_summary(
     target_score: float,
     gap_total: float,
 ) -> None:
-    doc.add_section_header("Resumen", accent=PALETTE["forest"])
+    doc.add_section_header("Summary", accent=PALETTE["forest"])
     card_top = doc.current_y
     usable = doc.page_width - (2 * doc.margin)
     gap = 12.0
@@ -697,27 +697,27 @@ def _render_friendly_summary(
         x=x0,
         y_top=card_top,
         width=card_w,
-        title="Puntaje actual",
+        title="Current score",
         value=f"{current_score:.2f}",
-        note="situación de partida",
+        note="baseline status",
     )
     _metric_card(
         doc,
         x=x1,
         y_top=card_top,
         width=card_w,
-        title="Puntaje objetivo",
+        title="Target score",
         value=f"{target_score:.2f}",
-        note="meta de madurez",
+        note="maturity target",
     )
     _metric_card(
         doc,
         x=x2,
         y_top=card_top,
         width=card_w,
-        title="Brecha total",
+        title="Total gap",
         value=f"{gap_total:.2f}",
-        note="objetivo - actual",
+        note="target - current",
     )
     doc.current_y = card_top - 84
 
@@ -790,7 +790,7 @@ def _render_budget_table(
         doc.current_y = y_bottom
 
     draw_row(
-        ["Etapa", "Acciones", "Con costo", "Sin dato", "Presupuesto CLP"],
+        ["Stage", "Actions", "With cost", "No data", "Budget CLP"],
         fill=PALETTE["forest_dark"],
         text_color=(1.0, 1.0, 1.0),
         bold=True,
@@ -859,7 +859,7 @@ def _build_30_60_90_plan(
         entries,
         key=lambda r: (_horizon_order(str(r.get("plazo", ""))), -float(r.get("priority", 0)), _norm(str(r.get("solution_name", "")))),
     )
-    short_stage = [r for r in ordered if _canonical_horizon(str(r.get("plazo", ""))) == "Corto plazo"]
+    short_stage = [r for r in ordered if _canonical_horizon(str(r.get("plazo", ""))) == "Short term"]
     deduped_short: list[dict[str, object]] = []
     seen: set[tuple[str, str]] = set()
     for row in short_stage:
@@ -888,7 +888,7 @@ def _render_plan_bucket(
     doc.add_section_header(title, accent=accent)
     doc.add_text(subtitle, size=8.9, color=PALETTE["slate"], gap_after=3.5)
     if not items:
-        doc.add_text("No se detectaron acciones para esta ventana de tiempo.", size=9.2, color=PALETTE["muted"], indent=10)
+        doc.add_text("No actions were identified for this time window.", size=9.2, color=PALETTE["muted"], indent=10)
         return
     for i, row in enumerate(items, start=1):
         doc.add_text(
@@ -900,7 +900,7 @@ def _render_plan_bucket(
             gap_after=0.0,
         )
         doc.add_text(
-            f"KPI foco: {row.get('kpi', '')} | Etapa: {_horizon_label(str(row.get('plazo', '')))} | Costo: {row.get('price', 'No informado')}",
+            f"Focus KPI: {row.get('kpi', '')} | Stage: {_horizon_label(str(row.get('plazo', '')))} | Cost: {row.get('price', 'Not reported')}",
             size=8.5,
             indent=16,
             color=PALETTE["slate"],
@@ -916,7 +916,7 @@ def _render_plan_bucket(
                 gap_after=0.0,
             )
         doc.add_text(
-            f"Descripción: {_brief(str(row.get('solution_description', '')), 180) or 'Descripción no disponible.'}",
+            f"Description: {_brief(str(row.get('solution_description', '')), 180) or 'Description not available.'}",
             size=8.4,
             indent=16,
             color=PALETTE["muted"],
@@ -935,42 +935,42 @@ def _append_30_60_90_page(
 ) -> None:
     plan = plan_override if plan_override is not None else _build_30_60_90_plan(entries, excluded_keys=excluded_keys)
     doc.add_page_break()
-    title = "Plan de Corto Plazo"
-    subtitle = f"{company_name} | Secuencia sugerida para implementar soluciones de Corto plazo"
+    title = "Short-Term Plan"
+    subtitle = f"{company_name} | Suggested sequence to implement short-term solutions"
     doc.add_banner(title, subtitle)
-    intro = "Este plan propone una secuencia accionable para pasar del diagnóstico a implementación de soluciones de Corto plazo."
+    intro = "This plan proposes an actionable sequence to move from diagnosis to the implementation of short-term solutions."
     doc.add_text(intro, size=9.6, color=PALETTE["text"], gap_after=5.0)
     _render_plan_bucket(
         doc,
-        title="Días 0-30 | Arranque y control base",
-        subtitle="Objetivo: activar quick wins y establecer línea base de indicadores.",
+        title="Days 0-30 | Startup and baseline control",
+        subtitle="Objective: activate quick wins and establish baseline indicators.",
         accent=PALETTE["short"],
         items=plan["30"],
     )
     _render_plan_bucket(
         doc,
-        title="Días 31-60 | Estandarización y seguimiento",
-        subtitle="Objetivo: consolidar procesos, automatizar tareas recurrentes y medir adopción.",
+        title="Days 31-60 | Standardization and monitoring",
+        subtitle="Objective: consolidate processes, automate recurring tasks, and measure adoption.",
         accent=PALETTE["medium"],
         items=plan["60"],
     )
     _render_plan_bucket(
         doc,
-        title="Días 61-90 | Escalar y optimizar",
-        subtitle="Objetivo: integrar iniciativas de mayor impacto y cerrar brechas estructurales.",
+        title="Days 61-90 | Scale and optimize",
+        subtitle="Objective: integrate higher-impact initiatives and close structural gaps.",
         accent=PALETTE["long"],
         items=plan["90"],
     )
     if friendly:
         doc.add_text(
-            "Tip: si un hito se retrasa, no detengas el plan. Reprograma manteniendo el orden 30/60/90 para sostener tracción.",
+            "Tip: if a milestone is delayed, do not stop the plan. Reschedule while preserving the 30/60/90 sequence to maintain momentum.",
             size=8.8,
             color=PALETTE["muted"],
             gap_after=0.0,
         )
     else:
         doc.add_text(
-            "Gobernanza sugerida: reunión quincenal de avance, decisión semanal de bloqueadores y registro de evidencias de impacto.",
+            "Suggested governance: biweekly progress review, weekly blocker decisions, and evidence-based impact logging.",
             size=8.8,
             color=PALETTE["muted"],
             gap_after=0.0,
@@ -1029,31 +1029,36 @@ def _validate_friendly_plan_distribution(
     plan_union = short_keys | medium_keys | long_keys
 
     overlaps = [
-        ("corto-mediano", short_keys & medium_keys),
-        ("corto-largo", short_keys & long_keys),
-        ("mediano-largo", medium_keys & long_keys),
+        ("short-medium", short_keys & medium_keys),
+        ("short-long", short_keys & long_keys),
+        ("medium-long", medium_keys & long_keys),
     ]
     overlap_count = sum(len(keys) for _, keys in overlaps)
     if overlap_count > 0:
-        return
+        raise ValueError("Plan validation failed: duplicated solutions were found across plans.")
 
     for row in short_rows:
-        if _canonical_horizon(str(row.get("plazo", ""))) != "Corto plazo":
-            return
+        if _canonical_horizon(str(row.get("plazo", ""))) != "Short term":
+            raise ValueError("Plan validation failed: the short-term plan contains solutions from another stage.")
     for row in medium_rows:
-        if _canonical_horizon(str(row.get("plazo", ""))) != "Mediano plazo":
-            return
+        if _canonical_horizon(str(row.get("plazo", ""))) != "Medium term":
+            raise ValueError("Plan validation failed: the medium-term plan contains solutions from another stage.")
     for row in long_rows:
-        if _canonical_horizon(str(row.get("plazo", ""))) != "Largo plazo":
-            return
+        if _canonical_horizon(str(row.get("plazo", ""))) != "Long term":
+            raise ValueError("Plan validation failed: the long-term plan contains solutions from another stage.")
 
     if quick_win_keys & plan_union:
-        return
+        raise ValueError("Plan validation failed: an immediate-impact action was included in staged plans.")
 
     missing = expected_plan_keys - plan_union
     extra = plan_union - expected_plan_keys
     if missing or extra:
-        return
+        detail = []
+        if missing:
+            detail.append(f"orphaned={len(missing)}")
+        if extra:
+            detail.append(f"extra={len(extra)}")
+        raise ValueError("Plan validation failed: inconsistent distribution (" + ", ".join(detail) + ").")
 
 
 def _append_stage_plan_page(
@@ -1106,33 +1111,33 @@ def _append_backlog_page(doc: SimplePdf, entries: list[dict[str, object]], *, co
         grouped[stage].append(row)
 
     doc.add_page_break()
-    doc.add_banner("CHECKLIST DE IMPLEMENTACIÓN", f"{company_name} | Checklist de implementación por período")
+    doc.add_banner("IMPLEMENTATION CHECKLIST", f"{company_name} | Implementation checklist by period")
     doc.add_text(
-        "Marca cada acción cuando se implemente.",
+        "Mark each action as it is implemented.",
         size=9.4,
         color=PALETTE["text"],
         gap_after=4.0,
     )
 
     stage_defs = [
-        ("Corto plazo", "Corto plazo (1-3 meses)", PALETTE["short"]),
-        ("Mediano plazo", "Mediano plazo (3-6 meses)", PALETTE["medium"]),
-        ("Largo plazo", "Largo plazo (6-12 meses)", PALETTE["long"]),
+        ("Short term", "Short term (1-3 months)", PALETTE["short"]),
+        ("Medium term", "Medium term (3-6 months)", PALETTE["medium"]),
+        ("Long term", "Long term (6-12 months)", PALETTE["long"]),
     ]
     for stage_key, stage_label, stage_color in stage_defs:
         doc.add_section_header(stage_label, accent=stage_color)
         stage_rows = grouped.get(stage_key, [])
         if not stage_rows:
-            doc.add_text("Sin acciones pendientes en esta etapa.", size=8.9, color=PALETTE["muted"], indent=8)
+            doc.add_text("No pending actions for this stage.", size=8.9, color=PALETTE["muted"], indent=8)
             continue
         for idx, row in enumerate(stage_rows, start=1):
-            name = str(row.get("solution_name", "")).strip() or "Acción sin nombre"
-            area = str(row.get("domain", "")).strip() or "Sin área clave"
-            kpi = str(row.get("kpi", "")).strip() or "No informado"
-            cost = str(row.get("price", "No informado")).strip() or "No informado"
+            name = str(row.get("solution_name", "")).strip() or "Unnamed action"
+            area = str(row.get("domain", "")).strip() or "No key area"
+            kpi = str(row.get("kpi", "")).strip() or "Not reported"
+            cost = str(row.get("price", "Not reported")).strip() or "Not reported"
             doc.add_text(f"[ ] {idx}. {name}", size=9.4, bold=True, indent=8, color=PALETTE["forest_dark"], gap_after=0.0)
             doc.add_text(
-                f"Área clave: {area} | KPI: {kpi} | Costo: {cost}",
+                f"Key area: {area} | KPI: {kpi} | Cost: {cost}",
                 size=8.2,
                 indent=18,
                 color=PALETTE["slate"],
@@ -1147,7 +1152,7 @@ def _top_stage_milestones(entries: list[dict[str, object]], *, per_stage: int = 
         grouped[stage].append(row)
 
     selected: dict[str, list[dict[str, object]]] = {}
-    for stage in ["Corto plazo", "Mediano plazo", "Largo plazo"]:
+    for stage in ["Short term", "Medium term", "Long term"]:
         stage_rows = grouped.get(stage, [])
         stage_rows = sorted(
             stage_rows,
@@ -1166,9 +1171,9 @@ def _draw_12_month_timeline_band(doc: SimplePdf) -> None:
     y_bottom = y_top - band_h
     cursor = x0
     segments = [
-        ("Corto 1-3m", 3.0, PALETTE["short"]),
-        ("Mediano 3-6m", 3.0, PALETTE["medium"]),
-        ("Largo 6-12m", 6.0, PALETTE["long"]),
+        ("Short 1-3m", 3.0, PALETTE["short"]),
+        ("Medium 3-6m", 3.0, PALETTE["medium"]),
+        ("Long 6-12m", 6.0, PALETTE["long"]),
     ]
     for label, months, color in segments:
         width = total_w * (months / 12.0)
@@ -1217,7 +1222,7 @@ def _stage_traffic_status(entries: list[dict[str, object]]) -> dict[str, dict[st
     for row in entries:
         grouped[_canonical_horizon(str(row.get("plazo", "")))].append(row)
 
-    stages = ["Corto plazo", "Mediano plazo", "Largo plazo"]
+    stages = ["Short term", "Medium term", "Long term"]
     action_counts: dict[str, int] = {}
     avg_priorities: dict[str, float] = {}
     for stage in stages:
@@ -1237,9 +1242,9 @@ def _stage_traffic_status(entries: list[dict[str, object]]) -> dict[str, dict[st
         avg_priority = avg_priorities[stage]
         if actions == 0:
             status[stage] = {
-                "label": "ALTO",
+                "label": "HIGH",
                 "color": PALETTE["success"],
-                "note": "Sin acciones pendientes en esta etapa.",
+                "note": "No pending actions for this stage.",
             }
             continue
 
@@ -1249,35 +1254,35 @@ def _stage_traffic_status(entries: list[dict[str, object]]) -> dict[str, dict[st
 
         if pressure >= 0.67:
             status[stage] = {
-                "label": "BAJO",
+                "label": "LOW",
                 "color": PALETTE["danger"],
-                "note": "Alta carga de implementación; requiere seguimiento semanal.",
+                "note": "High implementation load; weekly follow-up is required.",
             }
         elif pressure >= 0.34:
             status[stage] = {
-                "label": "MEDIO",
+                "label": "MEDIUM",
                 "color": PALETTE["warning"],
-                "note": "Carga intermedia; monitorear avances quincenalmente.",
+                "note": "Moderate load; monitor progress biweekly.",
             }
         else:
             status[stage] = {
-                "label": "ALTO",
+                "label": "HIGH",
                 "color": PALETTE["success"],
-                "note": "Carga controlada para esta etapa.",
+                "note": "Controlled load for this stage.",
             }
     return status
 
 
 def _render_stage_traffic_lights(doc: SimplePdf, entries: list[dict[str, object]]) -> None:
     status = _stage_traffic_status(entries)
-    doc.add_section_header("Semáforo de avance por etapa", accent=PALETTE["olive"])
+    doc.add_section_header("Stage progress traffic light", accent=PALETTE["olive"])
     doc.add_text(
-        "Lectura estimada según carga de acciones y prioridad: verde (avance alto), amarillo (avance medio), rojo (avance bajo).",
+        "Estimated reading by action load and priority: green (high progress), yellow (medium progress), red (low progress).",
         size=8.6,
         color=PALETTE["muted"],
         gap_after=4.0,
     )
-    for stage in ["Corto plazo", "Mediano plazo", "Largo plazo"]:
+    for stage in ["Short term", "Medium term", "Long term"]:
         row = status.get(stage, {})
         color = row.get("color", PALETTE["slate"])
         label = str(row.get("label", "MEDIO"))
@@ -1322,25 +1327,25 @@ def _append_12_month_timeline_page(doc: SimplePdf, entries: list[dict[str, objec
     milestones = _top_stage_milestones(entries, per_stage=2)
     doc.add_page_break()
     doc.add_banner(
-        "CRONOGRAMA 12 MESES",
-        f"{company_name} | Visual por etapas: corto (1-3), mediano (3-6), largo (6-12)",
+        "12-MONTH TIMELINE",
+        f"{company_name} | Stage view: short (1-3), medium (3-6), long (6-12)",
     )
     doc.add_text(
-        "Usa este cronograma para calendarizar hitos por trimestre y monitorear avance mensual.",
+        "Use this timeline to schedule milestones by quarter and monitor progress monthly.",
         size=9.6,
         color=PALETTE["text"],
         gap_after=5.0,
     )
     _draw_12_month_timeline_band(doc)
-    for stage in ["Corto plazo", "Mediano plazo", "Largo plazo"]:
-        doc.add_section_header(f"Hitos {_horizon_label(stage)}", accent=_horizon_color(stage))
+    for stage in ["Short term", "Medium term", "Long term"]:
+        doc.add_section_header(f"Milestones {_horizon_label(stage)}", accent=_horizon_color(stage))
         rows = milestones.get(stage, [])
         if not rows:
-            doc.add_text("Sin hitos priorizados para esta etapa.", size=9.0, color=PALETTE["muted"], indent=8)
+            doc.add_text("No prioritized milestones for this stage.", size=9.0, color=PALETTE["muted"], indent=8)
             continue
         for i, row in enumerate(rows, start=1):
             doc.add_text(
-                f"Hito {i}: {row.get('solution_name', '')}",
+                f"Milestone {i}: {row.get('solution_name', '')}",
                 size=9.7,
                 bold=True,
                 indent=8,
@@ -1348,14 +1353,14 @@ def _append_12_month_timeline_page(doc: SimplePdf, entries: list[dict[str, objec
                 gap_after=0.0,
             )
             doc.add_text(
-                f"KPI: {row.get('kpi', '')} | Costo: {row.get('price', 'No informado')}",
+                f"KPI: {row.get('kpi', '')} | Cost: {row.get('price', 'Not reported')}",
                 size=8.4,
                 indent=16,
                 color=PALETTE["slate"],
                 gap_after=0.0,
             )
             doc.add_text(
-                f"Resultado esperado: {_short(str(row.get('solution_description', '')), 120)}",
+                f"Expected outcome: {_short(str(row.get('solution_description', '')), 120)}",
                 size=8.3,
                 indent=16,
                 color=PALETTE["muted"],
@@ -1363,14 +1368,14 @@ def _append_12_month_timeline_page(doc: SimplePdf, entries: list[dict[str, objec
             )
     if friendly:
         doc.add_text(
-            "Revisión sugerida: cierre mensual de avances y ajuste de prioridades según resultados.",
+            "Suggested review: monthly close of progress and priority adjustment based on results.",
             size=8.7,
             color=PALETTE["muted"],
             gap_after=0.0,
         )
     else:
         doc.add_text(
-            "Control técnico sugerido: checkpoint mensual con evidencia de KPI y estado de implementación por hito.",
+            "Suggested technical control: monthly checkpoint with KPI evidence and implementation status by milestone.",
             size=8.7,
             color=PALETTE["muted"],
             gap_after=0.0,
@@ -1383,7 +1388,7 @@ def export_technical_pdf(payload: dict[str, object], output_path: Path) -> None:
     doc = SimplePdf()
 
     doc.add_banner(
-        "ROADMAP TÉCNICO DE MADUREZ",
+        "TECHNICAL MATURITY ROADMAP",
         f"{company.get('name', '')} | {company.get('company_type', '')} | {result.get('timestamp', '')}",
     )
 
@@ -1400,7 +1405,7 @@ def export_technical_pdf(payload: dict[str, object], output_path: Path) -> None:
         x=x0,
         y_top=card_top,
         width=card_w,
-        title="Puntaje actual",
+        title="Current score",
         value=f"{float(result.get('current_score', 0)):.2f}",
         note="madurez ponderada",
     )
@@ -1409,7 +1414,7 @@ def export_technical_pdf(payload: dict[str, object], output_path: Path) -> None:
         x=x1,
         y_top=card_top,
         width=card_w,
-        title="Puntaje objetivo",
+        title="Target score",
         value=f"{float(result.get('target_score', 0)):.2f}",
         note=f"nivel {int(result.get('target_level_index', 0))}",
     )
@@ -1418,16 +1423,16 @@ def export_technical_pdf(payload: dict[str, object], output_path: Path) -> None:
         x=x2,
         y_top=card_top,
         width=card_w,
-        title="Brecha total",
+        title="Total gap",
         value=f"{float(result.get('target_score', 0)) - float(result.get('current_score', 0)):.2f}",
-        note="objetivo - actual",
+        note="target - current",
     )
     doc.current_y = card_top - 84
 
-    doc.add_section_header("Brecha por dominio")
+    doc.add_section_header("Gap by domain")
     domains = result.get("domain_results", []) if isinstance(result, dict) else []
     if not domains:
-        doc.add_text("No hay dominios para mostrar.", size=10)
+        doc.add_text("No domains are available to display.", size=10)
     else:
         for row in domains:
             label = str(row.get("domain", ""))
@@ -1436,10 +1441,10 @@ def export_technical_pdf(payload: dict[str, object], output_path: Path) -> None:
             gap = float(row.get("gap", 0))
             doc.add_kpi_bar(label=label, current=current, target=target, gap=gap)
 
-    doc.add_section_header("KPI críticos priorizados")
+    doc.add_section_header("Prioritized critical KPIs")
     kpis = result.get("kpi_results", []) if isinstance(result, dict) else []
     if not kpis:
-        doc.add_text("No se detectaron brechas para el nivel objetivo seleccionado.", size=10)
+        doc.add_text("No gaps were identified for the selected target level.", size=10)
     else:
         for i, row in enumerate(kpis[:60], start=1):
             doc.add_text(
@@ -1450,25 +1455,25 @@ def export_technical_pdf(payload: dict[str, object], output_path: Path) -> None:
                 gap_after=0.0,
             )
             doc.add_text(
-                f"Prioridad {float(row.get('priority', 0)):.2f} | Brecha {row.get('gap', 0)} | {row.get('current_label', '')} -> {row.get('target_label', '')}",
+                f"Priority {float(row.get('priority', 0)):.2f} | Gap {row.get('gap', 0)} | {row.get('current_label', '')} -> {row.get('target_label', '')}",
                 size=9.1,
                 indent=12,
                 color=PALETTE["slate"],
                 gap_after=0.0,
             )
             doc.add_text(
-                f"Respuesta observada: {row.get('selected_option_text', '')}",
+                f"Observed response: {row.get('selected_option_text', '')}",
                 size=9.0,
                 indent=12,
                 color=PALETTE["muted"],
                 gap_after=1.4,
             )
 
-    doc.add_section_header("Roadmap de soluciones")
+    doc.add_section_header("Solution roadmap")
     entries = result.get("roadmap_entries", []) if isinstance(result, dict) else []
     grouped: dict[str, list[dict[str, object]]] = defaultdict(list)
     for row in entries:
-        grouped[str(row.get("plazo", "Sin clasificar"))].append(row)
+        grouped[str(row.get("plazo", "Unclassified"))].append(row)
 
     any_item = False
     for horizon in HORIZON_ORDER:
@@ -1481,14 +1486,14 @@ def export_technical_pdf(payload: dict[str, object], output_path: Path) -> None:
         for idx, row in enumerate(rows, start=1):
             doc.add_text(f"{idx}. {row.get('solution_name', '')}", size=10.0, bold=True, indent=8, gap_after=0.0)
             doc.add_text(
-                f"KPI: {row.get('kpi', '')} | Prioridad: {float(row.get('priority', 0)):.2f} | Precio: {row.get('price', 'No informado')}",
+                f"KPI: {row.get('kpi', '')} | Prioridad: {float(row.get('priority', 0)):.2f} | Price: {row.get('price', 'Not reported')}",
                 size=8.8,
                 indent=16,
                 color=PALETTE["slate"],
                 gap_after=0.0,
             )
             doc.add_text(
-                f"Resumen: {_short(str(row.get('solution_description', '')))}",
+                f"Summary: {_short(str(row.get('solution_description', '')))}",
                 size=8.8,
                 indent=16,
                 color=PALETTE["muted"],
@@ -1496,17 +1501,17 @@ def export_technical_pdf(payload: dict[str, object], output_path: Path) -> None:
             )
 
     if not any_item:
-        doc.add_text("No hay acciones roadmap para este escenario.", size=10.0)
+        doc.add_text("No roadmap actions are available for this scenario.", size=10.0)
 
     _render_budget_table(
         doc,
         entries,
-        title="Presupuesto estimado por etapa",
+        title="Estimated budget by stage",
         accent=PALETTE["forest_dark"],
-        note="Nota: el total considera solo filas con costo en CLP interpretable. Valores en UF o sin monto se reportan como 'Sin dato'.",
+        note="Note: totals include only rows with interpretable CLP costs. Values in UF or without amount are reported as 'No data'.",
     )
-    _append_30_60_90_page(doc, entries, company_name=str(company.get("name", "Empresa")), friendly=False)
-    _append_12_month_timeline_page(doc, entries, company_name=str(company.get("name", "Empresa")), friendly=False)
+    _append_30_60_90_page(doc, entries, company_name=str(company.get("name", "Company")), friendly=False)
+    _append_12_month_timeline_page(doc, entries, company_name=str(company.get("name", "Company")), friendly=False)
 
     doc.save(output_path)
 
@@ -1526,7 +1531,7 @@ def export_friendly_pdf(payload: dict[str, object], output_path: Path) -> None:
 
     doc = SimplePdf()
     doc.add_banner(
-        "ROADMAP CUSTOMIZADO DE MEJORA TECNOLÓGICA",
+        "CUSTOMIZED TECHNOLOGY IMPROVEMENT ROADMAP",
         f"{company.get('name', '')} | {company.get('company_type', '')} | {result.get('timestamp', '')}",
     )
     _render_friendly_summary(
@@ -1539,14 +1544,14 @@ def export_friendly_pdf(payload: dict[str, object], output_path: Path) -> None:
     _render_budget_table(
         doc,
         entries,
-        title="Presupuesto por etapa",
+        title="Budget by stage",
         accent=PALETTE["olive"],
-        note="Tip: usa esta tabla para armar caja trimestral. Si una fila no tiene costo, cotízala antes de calendarizar.",
+        note="Tip: use this table to plan quarterly cash flow. If a row has no cost, estimate it before scheduling.",
     )
 
-    doc.add_section_header("Acciones de impacto inmediato", accent=PALETTE["forest"])
+    doc.add_section_header("Immediate-impact actions", accent=PALETTE["forest"])
     if not quick_wins:
-        doc.add_text("No se identificaron acciones para el nivel objetivo seleccionado.", size=10)
+        doc.add_text("No actions were identified for the selected target level.", size=10)
     else:
         for i, item in enumerate(quick_wins, start=1):
             horizon = str(item.get("plazo", ""))
@@ -1563,7 +1568,7 @@ def export_friendly_pdf(payload: dict[str, object], output_path: Path) -> None:
             )
             doc.add_text(f"{i}. {item.get('solution_name', '')}", size=10.8, bold=True, indent=12, color=PALETTE["forest_dark"], gap_after=0.0)
             doc.add_text(
-                f"{_horizon_label(horizon)} | KPI: {item.get('kpi', '')} | Costo: {item.get('price', 'No informado')}",
+                f"{_horizon_label(horizon)} | KPI: {item.get('kpi', '')} | Cost: {item.get('price', 'Not reported')}",
                 size=9.0,
                 indent=12,
                 color=PALETTE["slate"],
@@ -1579,7 +1584,7 @@ def export_friendly_pdf(payload: dict[str, object], output_path: Path) -> None:
                     gap_after=0.0,
                 )
             doc.add_text(
-                f"Descripción: {_brief(str(item.get('solution_description', '')), 170) or 'Descripción no disponible.'}",
+                f"Description: {_brief(str(item.get('solution_description', '')), 170) or 'Description not available.'}",
                 size=9.0,
                 indent=12,
                 color=PALETTE["muted"],
@@ -1587,14 +1592,14 @@ def export_friendly_pdf(payload: dict[str, object], output_path: Path) -> None:
             )
 
     short_plan = _build_30_60_90_plan(entries, excluded_keys=quick_win_keys)
-    medium_plan_rows = _stage_plan_rows(entries, "Mediano plazo", excluded_keys=quick_win_keys)
-    long_plan_rows = _stage_plan_rows(entries, "Largo plazo", excluded_keys=quick_win_keys)
+    medium_plan_rows = _stage_plan_rows(entries, "Medium term", excluded_keys=quick_win_keys)
+    long_plan_rows = _stage_plan_rows(entries, "Long term", excluded_keys=quick_win_keys)
     _validate_friendly_plan_distribution(entries, quick_win_keys, short_plan, medium_plan_rows, long_plan_rows)
 
     _append_30_60_90_page(
         doc,
         entries,
-        company_name=str(company.get("name", "Empresa")),
+        company_name=str(company.get("name", "Company")),
         friendly=True,
         excluded_keys=quick_win_keys,
         plan_override=short_plan,
@@ -1602,25 +1607,25 @@ def export_friendly_pdf(payload: dict[str, object], output_path: Path) -> None:
     _append_stage_plan_page(
         doc,
         entries,
-        company_name=str(company.get("name", "Empresa")),
-        stage="Mediano plazo",
-        title="Plan de Mediano Plazo",
-        subtitle="Secuencia sugerida para implementar soluciones de Mediano plazo",
-        intro="Este plan propone una secuencia accionable para pasar del diagnóstico a implementación de soluciones de Mediano plazo.",
+        company_name=str(company.get("name", "Company")),
+        stage="Medium term",
+        title="Medium-Term Plan",
+        subtitle="Suggested sequence to implement medium-term solutions",
+        intro="This plan proposes an actionable sequence to move from diagnosis to the implementation of medium-term solutions.",
         buckets=[
             (
-                "Meses 3-4 | Preparación operativa",
-                "Objetivo: instalar capacidades base y coordinar recursos para ejecución sostenida.",
+                "Months 3-4 | Operational preparation",
+                "Objective: establish core capabilities and coordinate resources for sustained execution.",
                 PALETTE["medium"],
             ),
             (
-                "Meses 4-5 | Implementación central",
-                "Objetivo: ejecutar soluciones troncales y controlar adopción con seguimiento quincenal.",
+                "Months 4-5 | Core implementation",
+                "Objective: execute core solutions and monitor adoption through biweekly follow-up.",
                 PALETTE["olive"],
             ),
             (
-                "Meses 5-6 | Cierre de etapa",
-                "Objetivo: estabilizar resultados, cerrar brechas pendientes y dejar traspaso a largo plazo.",
+                "Months 5-6 | Stage closure",
+                "Objective: stabilize outcomes, close pending gaps, and prepare handover to the long-term stage.",
                 PALETTE["long"],
             ),
         ],
@@ -1630,30 +1635,30 @@ def export_friendly_pdf(payload: dict[str, object], output_path: Path) -> None:
     _append_stage_plan_page(
         doc,
         entries,
-        company_name=str(company.get("name", "Empresa")),
-        stage="Largo plazo",
-        title="Plan de Largo Plazo",
-        subtitle="Secuencia sugerida para implementar soluciones de Largo plazo",
-        intro="Este plan propone una secuencia accionable para pasar del diagnóstico a implementación de soluciones de Largo plazo.",
+        company_name=str(company.get("name", "Company")),
+        stage="Long term",
+        title="Long-Term Plan",
+        subtitle="Suggested sequence to implement long-term solutions",
+        intro="This plan proposes an actionable sequence to move from diagnosis to the implementation of long-term solutions.",
         buckets=[
             (
-                "Meses 6-8 | Escalamiento inicial",
-                "Objetivo: activar iniciativas de expansión y alinear gobernanza para crecimiento controlado.",
+                "Months 6-8 | Initial scaling",
+                "Objective: activate expansion initiatives and align governance for controlled growth.",
                 PALETTE["long"],
             ),
             (
-                "Meses 8-10 | Integración y optimización",
-                "Objetivo: integrar soluciones desplegadas, optimizar procesos y elevar trazabilidad.",
+                "Months 8-10 | Integration and optimization",
+                "Objective: integrate deployed solutions, optimize processes, and improve traceability.",
                 PALETTE["olive"],
             ),
             (
-                "Meses 10-12 | Consolidación",
-                "Objetivo: cerrar ciclo anual con estándares definidos y backlog estratégico validado.",
+                "Months 10-12 | Consolidation",
+                "Objective: close the annual cycle with defined standards and a validated strategic backlog.",
                 PALETTE["forest_dark"],
             ),
         ],
         excluded_keys=quick_win_keys,
         stage_rows_override=long_plan_rows,
     )
-    _append_backlog_page(doc, entries, company_name=str(company.get("name", "Empresa")))
+    _append_backlog_page(doc, entries, company_name=str(company.get("name", "Company")))
     doc.save(output_path)
