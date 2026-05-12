@@ -51,7 +51,7 @@ FLAG_EN_PATH = FLAGS_DIR / "en_flag.png"
 
 UI_TEXTS = {
     "es": {
-        "page_title": "RoadmapGenerator | Captura",
+        "page_title": "Generador de Roadmap Personalizado | Captura",
         "setup_header": "Configuración inicial",
         "company_data_header": "Datos de la empresa",
         "company_type": "Tipo de empresa*",
@@ -82,12 +82,12 @@ UI_TEXTS = {
         "email_not_sent": "No enviado",
         "download_es": "Descargar Roadmap PDF (ES)",
         "download_en": "Descargar Roadmap PDF (EN)",
-        "select_company_type": "Selecciona el tipo de empresa para continuar.",
+        "select_company_type": "Seleccione el tipo de empresa en el panel de la izquierda para continuar.",
         "cannot_load_profile": "No se pudo cargar el perfil",
         "roadmap_error": "No se pudo generar el roadmap",
         "language_button": "English",
         "title_company_default": "Empresa",
-        "main_title": "RoadmapGenerator | Captura de Datos",
+        "main_title": "Generador de Roadmap Personalizado | Captura de Datos",
         "missing_company_type": "Tipo de empresa",
         "missing_company_name": "Nombre empresa",
         "missing_rut": "RUT",
@@ -103,7 +103,7 @@ UI_TEXTS = {
         "friendly_label_en": "PDF friendly EN",
     },
     "en": {
-        "page_title": "RoadmapGenerator | Capture",
+        "page_title": "Customized Roadmap Generator | Capture",
         "setup_header": "Initial Setup",
         "company_data_header": "Company Data",
         "company_type": "Company type*",
@@ -139,7 +139,7 @@ UI_TEXTS = {
         "roadmap_error": "The roadmap could not be generated",
         "language_button": "Español",
         "title_company_default": "Company",
-        "main_title": "RoadmapGenerator | Company Data Capture",
+        "main_title": "Customized Roadmap Generator | Company Data Capture",
         "missing_company_type": "Company type",
         "missing_company_name": "Company name",
         "missing_rut": "RUT",
@@ -198,6 +198,7 @@ def _render_language_flag(language: str) -> None:
     current = _lang(language)
     target = "en" if current == "es" else "es"
     target_label = "English" if target == "en" else "Español"
+    target_code = "EN" if target == "en" else "ES"
     flag_path = FLAG_EN_PATH if current == "es" else FLAG_ES_PATH
     data_url = _img_data_url(str(flag_path))
     if not data_url:
@@ -208,11 +209,17 @@ def _render_language_flag(language: str) -> None:
     st.markdown(
         f"""
 <div style="display:flex; justify-content:flex-end; align-items:center; margin-top:2.4rem;">
-  <a href="?ui_lang={target}" title="{html.escape(target_label)}"
-     style="display:inline-flex; width:22px; height:14px; align-items:center; justify-content:center; border:1px solid rgba(47,109,60,0.25); border-radius:2px; overflow:hidden; box-shadow:0 2px 6px rgba(0,0,0,0.12);">
-    <img src="{data_url}" alt="{html.escape(target_label)}"
-         style="display:block; width:22px; height:14px; object-fit:cover;" />
-  </a>
+  <form action="" method="get" style="margin:0; padding:0; display:inline-flex; align-items:center; gap:0.20rem;">
+    <input type="hidden" name="ui_lang" value="{target}" />
+    <button type="submit" title="{html.escape(target_label)}"
+      style="display:inline-flex; width:22px; height:14px; align-items:center; justify-content:center; border:1px solid rgba(31,79,47,0.35); border-radius:2px; overflow:hidden; box-shadow:0 2px 6px rgba(0,0,0,0.12); background:transparent; padding:0; margin:0; cursor:pointer;">
+      <img src="{data_url}" alt="{html.escape(target_label)}"
+           style="display:block; width:22px; height:14px; object-fit:cover;" />
+    </button>
+    <span class="lang-code-chip">
+      {target_code}
+    </span>
+  </form>
 </div>
         """,
         unsafe_allow_html=True,
@@ -295,6 +302,10 @@ def _render_styles() -> None:
   --agri-sky-100: #dbe9dd;
   --agri-paper: #f8f4e9;
   --agri-ink: #27372e;
+  --agri-moss-100: #e8efe2;
+  --agri-moss-300: #c9d8bf;
+  --agri-moss-700: #355e3b;
+  --agri-clay-500: #8a6744;
 }
 
 .stApp {
@@ -310,14 +321,116 @@ def _render_styles() -> None:
 }
 
 [data-testid="stHeader"] {
-  background: rgba(248, 244, 233, 0.55);
-  backdrop-filter: blur(4px);
+  background:
+    linear-gradient(90deg, #2f6f46 0%, #3d7d4a 55%, #8a6744 100%) !important;
+  border-bottom: 1px solid rgba(25, 83, 56, 0.55);
+}
+
+[data-testid="stHeader"] [data-testid="collapsedControl"],
+[data-testid="stHeader"] [data-testid="stToolbar"] {
+  color: #f7f3e8 !important;
+}
+
+[data-testid="stHeader"] [data-testid="collapsedControl"] button,
+[data-testid="stHeader"] [data-testid="stToolbar"] button {
+  color: #f7f3e8 !important;
+  -webkit-text-fill-color: #f7f3e8 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  min-width: 44px !important;
+  min-height: 40px !important;
+  box-shadow: none !important;
+  opacity: 1 !important;
+}
+
+[data-testid="stHeader"] [data-testid="collapsedControl"] button {
+  background: rgba(25, 83, 56, 0.62) !important;
+}
+
+[data-testid="stHeader"] [data-testid="collapsedControl"] button:hover,
+[data-testid="stHeader"] [data-testid="stToolbar"] button:hover {
+  background: rgba(25, 83, 56, 0.45) !important;
+}
+
+[data-testid="stHeader"] [data-testid="collapsedControl"] button:hover {
+  background: rgba(17, 64, 44, 0.82) !important;
+}
+
+[data-testid="stHeader"] [data-testid="collapsedControl"] button svg,
+[data-testid="stHeader"] [data-testid="stToolbar"] button svg {
+  width: 20px !important;
+  height: 20px !important;
+  color: #f7f3e8 !important;
+  fill: #f7f3e8 !important;
+  stroke: #f7f3e8 !important;
+  stroke-width: 2.2 !important;
+}
+
+[data-testid="stHeader"] [data-testid="collapsedControl"] button svg path,
+[data-testid="stHeader"] [data-testid="collapsedControl"] button svg line,
+[data-testid="stHeader"] [data-testid="collapsedControl"] button svg polyline {
+  stroke: #f7f3e8 !important;
+  fill: #f7f3e8 !important;
+}
+
+[data-testid="stSidebarCollapsedControl"] button {
+  background: rgba(25, 83, 56, 0.62) !important;
+  color: #f7f3e8 !important;
+  -webkit-text-fill-color: #f7f3e8 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  min-width: 44px !important;
+  min-height: 40px !important;
+  box-shadow: none !important;
+  opacity: 1 !important;
+}
+
+[data-testid="stSidebarCollapsedControl"] button:hover {
+  background: rgba(17, 64, 44, 0.82) !important;
+}
+
+[data-testid="stSidebarCollapsedControl"] {
+  opacity: 1 !important;
+}
+
+[data-testid="stSidebarCollapsedControl"] > div,
+[data-testid="stSidebarCollapsedControl"] button > div,
+[data-testid="stSidebarCollapsedControl"] button span,
+[data-testid="stSidebarCollapsedControl"] button p {
+  color: #f7f3e8 !important;
+  -webkit-text-fill-color: #f7f3e8 !important;
+  fill: #f7f3e8 !important;
+  stroke: #f7f3e8 !important;
+  opacity: 1 !important;
+  font-weight: 700 !important;
+}
+
+[data-testid="stSidebarCollapsedControl"] button svg,
+[data-testid="stSidebarCollapsedControl"] button svg path,
+[data-testid="stSidebarCollapsedControl"] button svg line,
+[data-testid="stSidebarCollapsedControl"] button svg polyline {
+  color: #f7f3e8 !important;
+  fill: #f7f3e8 !important;
+  stroke: #f7f3e8 !important;
+  stroke-width: 2.2 !important;
+  opacity: 1 !important;
+}
+
+[data-testid="stSidebarCollapsedControl"] button *,
+[data-testid="stHeader"] [data-testid="collapsedControl"] button *,
+[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] button * {
+  color: #f7f3e8 !important;
+  -webkit-text-fill-color: #f7f3e8 !important;
+  fill: #f7f3e8 !important;
+  stroke: #f7f3e8 !important;
+  opacity: 1 !important;
 }
 
 [data-testid="stSidebar"] {
   background:
-    linear-gradient(180deg, rgba(31, 79, 47, 0.92) 0%, rgba(47, 109, 60, 0.9) 48%, rgba(122, 79, 44, 0.9) 100%);
-  border-right: 1px solid rgba(245, 237, 213, 0.28);
+    linear-gradient(180deg, #2f6f46 0%, #3d7d4a 58%, #8a6744 100%) !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.10);
 }
 
 [data-testid="stSidebar"] h1,
@@ -327,11 +440,35 @@ def _render_styles() -> None:
 [data-testid="stSidebar"] p,
 [data-testid="stSidebar"] span,
 [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {
-  color: #f7f3e8;
+  color: #f7f3e8 !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
+  padding-top: 0.5rem;
+}
+
+[data-testid="stSidebar"] hr {
+  border: 0 !important;
+  border-top: 1px solid rgba(25, 83, 56, 0.55) !important;
+  margin-top: 0.95rem !important;
+  margin-bottom: 1.15rem !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] button {
+  background: transparent !important;
+  color: #f7f3e8 !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] button svg {
+  color: #f7f3e8 !important;
+  fill: #f7f3e8 !important;
+  stroke: #f7f3e8 !important;
 }
 
 .block-container {
-  padding-top: 1.2rem;
+  padding-top: 2.0rem;
   padding-bottom: 2.5rem;
 }
 
@@ -350,6 +487,20 @@ h1, h2, h3 {
   box-shadow: 0 10px 24px rgba(47, 69, 50, 0.12);
   padding: 16px 18px;
   margin-bottom: 14px;
+}
+
+.app-tip {
+  background: linear-gradient(90deg, rgba(201, 216, 191, 0.58), rgba(232, 239, 226, 0.80));
+  border: 1px solid rgba(53, 94, 59, 0.28);
+  border-left: 5px solid #355e3b;
+  border-radius: 10px;
+  color: #234730;
+  font-family: "Source Sans 3", sans-serif;
+  font-size: 1.06rem;
+  font-weight: 600;
+  line-height: 1.35;
+  padding: 0.88rem 1rem;
+  margin-bottom: 0.8rem;
 }
 
 .app-title {
@@ -428,9 +579,16 @@ h1, h2, h3 {
 
 [data-testid="stSidebar"] [data-testid="stTextInput"] input,
 [data-testid="stSidebar"] [data-testid="stSelectbox"] div[data-baseweb="select"] > div {
-  background-color: rgba(248, 244, 233, 0.96) !important;
-  color: var(--agri-ink) !important;
+  background-color: #dfddd1 !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  color: #2a322d !important;
   -webkit-text-fill-color: var(--agri-ink) !important;
+  box-shadow: none !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stSelectbox"] div[data-baseweb="select"] svg {
+  color: #2a322d !important;
+  fill: #2a322d !important;
 }
 
 [data-testid="stTextInput"] input:focus,
@@ -569,6 +727,24 @@ h1, h2, h3 {
 
 .stCaption {
   color: #486351;
+}
+
+.lang-code-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #1f4f2f;
+  font-family: "Source Sans 3", sans-serif;
+  font-size: 0.60rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  transform: translateY(0.5px);
 }
 
 .sidebar-field-label {
@@ -781,7 +957,7 @@ def _render_last_result_summary(last: dict[str, object], language: str) -> None:
 
 
 def main() -> None:
-    st.set_page_config(page_title="RoadmapGenerator", layout="wide")
+    st.set_page_config(page_title="Generador de Roadmap Personalizado / Customized Roadmap Generator", layout="wide")
     _render_styles()
 
     if "ui_language" not in st.session_state:
@@ -817,7 +993,7 @@ def main() -> None:
             st.title(f"{_t(language, 'main_title')} {selected_company_type}")
 
     if company_type == "__select__":
-        st.info(_t(language, "select_company_type"))
+        st.markdown(f"<div class='app-tip'>{html.escape(_t(language, 'select_company_type'))}</div>", unsafe_allow_html=True)
         return
 
     try:
