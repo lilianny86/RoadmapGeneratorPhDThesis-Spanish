@@ -5,6 +5,7 @@ import json
 import html
 import re
 import smtplib
+import ssl
 import unicodedata
 from datetime import datetime
 from email.message import EmailMessage
@@ -18,7 +19,7 @@ from pdf_export import export_friendly_pdf as export_friendly_pdf_es, export_tec
 from pdf_export_en import export_friendly_pdf as export_friendly_pdf_en
 from recommendation_engine import build_engine_config
 from roadmap_core import build_roadmap, load_profile_data, save_traceability_csv, save_traceability_json, save_txt
-from security_config import load_security_config, validate_smtp_config
+from security_config import ENV_KEYS, load_security_config, validate_smtp_config
 
 
 ROOT = Path(__file__).resolve().parent
@@ -95,6 +96,10 @@ UI_TEXTS = {
         "missing_valid_rut": "RUT válido",
         "missing_email": "Correo",
         "smtp_missing_email": "Por favor ingresa un correo válido en Datos de la empresa (campo Correo).",
+        "smtp_error_auth": "Error de autenticación SMTP. Verifica credenciales y App Password en Secrets.",
+        "smtp_error_config": "Configuración SMTP incompleta o inválida en Secrets.",
+        "smtp_error_network": "No fue posible conectar con el servidor SMTP. Intenta nuevamente.",
+        "smtp_error_generic": "No fue posible enviar el correo automático.",
         "email_subject": "Roadmap customizado {company}",
         "email_body": "Estimado/a,\nSe adjunta el Roadmap customizado para la empresa {company}.\n*Este es un correo automático. No responder.",
         "not_sent_prefix": "No enviado",
@@ -147,6 +152,10 @@ UI_TEXTS = {
         "missing_valid_rut": "Valid RUT",
         "missing_email": "Email",
         "smtp_missing_email": "Please provide a valid email address in Company Data (Email field).",
+        "smtp_error_auth": "SMTP authentication error. Check credentials and App Password in Secrets.",
+        "smtp_error_config": "Incomplete or invalid SMTP configuration in Secrets.",
+        "smtp_error_network": "Unable to connect to the SMTP server. Please try again.",
+        "smtp_error_generic": "Unable to send the automated email.",
         "email_subject": "Customized Roadmap {company}",
         "email_body": "Dear Recipient,\nPlease find attached the customized roadmap for {company}.\n*This is an automated email. Please do not reply.",
         "not_sent_prefix": "Not sent",
@@ -593,6 +602,137 @@ h1, h2, h3 {
   margin-bottom: 0.8rem;
 }
 
+.app-warn {
+  background: linear-gradient(90deg, rgba(245, 231, 189, 0.84), rgba(252, 247, 224, 0.96));
+  border: 1px solid rgba(138, 103, 68, 0.38);
+  border-left: 5px solid #8a6744;
+  border-radius: 10px;
+  color: #3b2f24 !important;
+  font-family: "Source Sans 3", sans-serif;
+  font-size: 1.00rem;
+  font-weight: 700;
+  line-height: 1.38;
+  padding: 0.82rem 0.96rem;
+  margin-bottom: 0.62rem;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.app-warn-meta {
+  display: block;
+  margin-top: 0.28rem;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #4a3a2d !important;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.app-warn, .app-warn * {
+  color: #3b2f24 !important;
+  text-shadow: none !important;
+}
+
+.app-status {
+  border-radius: 10px;
+  padding: 0.78rem 0.92rem;
+  margin-top: 0.48rem;
+  margin-bottom: 0.2rem;
+  font-family: "Source Sans 3", sans-serif;
+  line-height: 1.34;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.app-status-ok {
+  background: linear-gradient(90deg, rgba(205, 230, 201, 0.62), rgba(235, 246, 233, 0.86));
+  border: 1px solid rgba(47, 109, 60, 0.34);
+  border-left: 5px solid #2f6d3c;
+  color: #234730 !important;
+}
+
+.app-status-warn {
+  background: linear-gradient(90deg, rgba(245, 231, 189, 0.80), rgba(252, 247, 224, 0.96));
+  border: 1px solid rgba(138, 103, 68, 0.36);
+  border-left: 5px solid #8a6744;
+  color: #3b2f24 !important;
+}
+
+.app-status-title {
+  font-size: 0.96rem;
+  font-weight: 800;
+  margin-right: 0.18rem;
+}
+
+.app-status-text {
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.app-status, .app-status * {
+  text-shadow: none !important;
+}
+
+@media (max-width: 900px) {
+  .block-container {
+    padding-top: 1.65rem;
+    padding-bottom: 2rem;
+  }
+
+  h1 {
+    font-size: 2rem !important;
+    line-height: 1.18 !important;
+  }
+
+  .summary-card {
+    min-height: 88px;
+    padding: 12px 14px;
+  }
+
+  .summary-value {
+    font-size: 1.75rem;
+  }
+
+  .summary-value-text {
+    font-size: 1.24rem;
+  }
+
+  .app-tip,
+  .app-warn,
+  .app-status {
+    font-size: 0.95rem;
+    padding: 0.74rem 0.82rem;
+    line-height: 1.36;
+  }
+
+  .app-warn-meta,
+  .app-status-text {
+    font-size: 0.86rem;
+  }
+}
+
+@media (max-width: 560px) {
+  h1 {
+    font-size: 1.72rem !important;
+    line-height: 1.16 !important;
+  }
+
+  .summary-value {
+    font-size: 1.62rem;
+  }
+
+  .summary-value-text {
+    font-size: 1.14rem;
+  }
+
+  .app-tip,
+  .app-warn,
+  .app-status {
+    border-left-width: 4px;
+    border-radius: 9px;
+  }
+}
+
 .app-title {
   font-family: "Bitter", serif;
   font-weight: 800;
@@ -946,6 +1086,102 @@ def _clean_prompt(prompt: str, qnum: int, language: str) -> str:
     return text or _t(language, "question_fallback", qnum=qnum)
 
 
+def _read_streamlit_secret_value(*keys: str) -> str:
+    try:
+        secrets = st.secrets
+    except Exception:
+        return ""
+
+    candidate_maps: list[object] = [secrets]
+    for section in ("smtp", "roadmap", "roadmap_smtp"):
+        try:
+            section_obj = secrets.get(section) if hasattr(secrets, "get") else secrets[section]
+        except Exception:
+            section_obj = None
+        if section_obj is not None:
+            candidate_maps.append(section_obj)
+
+    for mapping in candidate_maps:
+        for key in keys:
+            try:
+                value = mapping.get(key) if hasattr(mapping, "get") else mapping[key]
+            except Exception:
+                value = None
+            if value is None:
+                continue
+            txt = str(value).strip()
+            if txt:
+                return txt
+    return ""
+
+
+def _parse_secret_bool(value: str, *, default: bool = False) -> bool:
+    if not value:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _merge_smtp_config_from_streamlit_secrets(cfg: object) -> object:
+    try:
+        cfg.require_smtp = _parse_secret_bool(
+            _read_streamlit_secret_value(
+                ENV_KEYS["require_smtp"],
+                "require_smtp",
+                "ROADMAP_REQUIRE_SMTP",
+            ),
+            default=getattr(cfg, "require_smtp", False),
+        )
+
+        host = _read_streamlit_secret_value(ENV_KEYS["smtp_host"], "smtp_host", "ROADMAP_SMTP_HOST", "host")
+        if host:
+            cfg.smtp_host = host
+
+        port_txt = _read_streamlit_secret_value(ENV_KEYS["smtp_port"], "smtp_port", "ROADMAP_SMTP_PORT", "port")
+        if port_txt:
+            try:
+                cfg.smtp_port = int(str(port_txt).strip())
+            except ValueError:
+                pass
+
+        user = _read_streamlit_secret_value(ENV_KEYS["smtp_user"], "smtp_user", "ROADMAP_SMTP_USER", "user")
+        if user:
+            cfg.smtp_user = user
+
+        password = _read_streamlit_secret_value(ENV_KEYS["smtp_password"], "smtp_password", "ROADMAP_SMTP_PASSWORD", "password")
+        if password:
+            cfg.smtp_password = password
+
+        sender = _read_streamlit_secret_value(ENV_KEYS["smtp_from"], "smtp_from", "ROADMAP_SMTP_FROM", "from")
+        if sender:
+            cfg.smtp_from = sender
+
+        smtp_to = _read_streamlit_secret_value(ENV_KEYS["smtp_to"], "smtp_to", "ROADMAP_SMTP_TO", "to")
+        if smtp_to:
+            cfg.smtp_to = smtp_to
+    except Exception:
+        # Never fail roadmap generation due to optional secret lookup.
+        pass
+    return cfg
+
+
+def _safe_smtp_error_message(exc: Exception, language: str) -> str:
+    if isinstance(exc, RuntimeError):
+        lower = str(exc).lower()
+        if "incomplete smtp configuration" in lower or "faltan variables smtp" in lower:
+            return _t(language, "smtp_error_config")
+
+    if isinstance(exc, smtplib.SMTPAuthenticationError):
+        return _t(language, "smtp_error_auth")
+
+    if isinstance(exc, (smtplib.SMTPConnectError, smtplib.SMTPServerDisconnected, TimeoutError, ConnectionError, OSError)):
+        return _t(language, "smtp_error_network")
+
+    if isinstance(exc, smtplib.SMTPException):
+        return _t(language, "smtp_error_generic")
+
+    return _t(language, "smtp_error_generic")
+
+
 def _send_pdfs_via_gmail(
     *,
     root: Path,
@@ -955,6 +1191,7 @@ def _send_pdfs_via_gmail(
     language: str,
 ) -> list[str]:
     cfg, _ = load_security_config(root)
+    cfg = _merge_smtp_config_from_streamlit_secrets(cfg)
     if not cfg.smtp_host:
         cfg.smtp_host = "smtp.gmail.com"
     if cfg.smtp_port <= 0:
@@ -990,7 +1227,7 @@ def _send_pdfs_via_gmail(
         )
 
     with smtplib.SMTP(cfg.smtp_host, cfg.smtp_port, timeout=30) as smtp:
-        smtp.starttls()
+        smtp.starttls(context=ssl.create_default_context())
         smtp.login(cfg.smtp_user, cfg.smtp_password)
         smtp.send_message(msg)
     return targets
@@ -1040,10 +1277,19 @@ def _render_last_result_summary(last: dict[str, object], language: str) -> None:
     m1.metric(_t(language, "current_score"), last.get("current_score", 0))
     m2.metric(_t(language, "target_score"), last.get("target_score", 0))
     m3.metric(_t(language, "actions"), last.get("actions", 0))
-    if str(last.get("email_status", "")).startswith(_t(language, "sent_prefix")):
-        st.info(f"{_t(language, 'email_label')}: {last['email_status']}")
+    status_text_raw = str(last.get("email_status", _t(language, "email_not_sent")))
+    status_label = html.escape(_t(language, "email_label"))
+    status_text = html.escape(status_text_raw)
+    if status_text_raw.startswith(_t(language, "sent_prefix")):
+        st.markdown(
+            f"<div class='app-status app-status-ok'><span class='app-status-title'>{status_label}:</span><span class='app-status-text'>{status_text}</span></div>",
+            unsafe_allow_html=True,
+        )
     else:
-        st.warning(f"{_t(language, 'email_label')}: {last.get('email_status', _t(language, 'email_not_sent'))}")
+        st.markdown(
+            f"<div class='app-status app-status-warn'><span class='app-status-title'>{status_label}:</span><span class='app-status-text'>{status_text}</span></div>",
+            unsafe_allow_html=True,
+        )
 
 
 def main() -> None:
@@ -1098,8 +1344,12 @@ def main() -> None:
     ui_cfg = _render_sidebar(profile, max_level=max_level, language=language)
     missing_required = _missing_required_company_fields(company_type, ui_cfg, language)
     if missing_required:
-        st.warning(_t(language, "missing_required_warning"))
-        st.caption(_t(language, "missing_prefix") + " " + ", ".join(missing_required))
+        warning_text = html.escape(_t(language, "missing_required_warning"))
+        missing_text = html.escape(_t(language, "missing_prefix") + " " + ", ".join(missing_required))
+        st.markdown(
+            f"<div class='app-warn'>{warning_text}<span class='app-warn-meta'>{missing_text}</span></div>",
+            unsafe_allow_html=True,
+        )
         return
 
     col1, col2, col3 = st.columns(3)
@@ -1237,7 +1487,8 @@ def main() -> None:
                     )
                     email_status = f"{_t(language, 'sent_prefix')}: {', '.join(recipients)}"
                 except Exception as email_exc:
-                    email_status = f"{_t(language, 'not_sent_prefix')}: {email_exc}"
+                    safe_error = _safe_smtp_error_message(email_exc, language)
+                    email_status = f"{_t(language, 'not_sent_prefix')}: {safe_error}"
 
                 result = payload_selected.get("result", {})
                 st.session_state["ui_last_result"] = {
