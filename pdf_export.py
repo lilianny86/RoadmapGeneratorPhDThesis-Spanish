@@ -172,33 +172,33 @@ def _solution_urls(row: dict[str, object], *, max_urls: int = 1) -> list[str]:
 
 def _horizon_order(plazo: str) -> int:
     key = _norm(plazo)
-    if "corto" in key:
+    if "corto" in key or "short" in key:
         return 1
-    if "mediano" in key:
+    if "mediano" in key or "medium" in key:
         return 2
-    if "largo" in key:
+    if "largo" in key or "long" in key:
         return 3
     return 4
 
 
 def _horizon_color(plazo: str) -> tuple[float, float, float]:
     key = _norm(plazo)
-    if "corto" in key:
+    if "corto" in key or "short" in key:
         return PALETTE["short"]
-    if "mediano" in key:
+    if "mediano" in key or "medium" in key:
         return PALETTE["medium"]
-    if "largo" in key:
+    if "largo" in key or "long" in key:
         return PALETTE["long"]
     return PALETTE["slate"]
 
 
 def _canonical_horizon(value: str) -> str:
     key = _norm(value)
-    if "corto" in key:
+    if "corto" in key or "short" in key:
         return "Corto plazo"
-    if "mediano" in key:
+    if "mediano" in key or "medium" in key:
         return "Mediano plazo"
-    if "largo" in key:
+    if "largo" in key or "long" in key:
         return "Largo plazo"
     months = _extract_timeline_months(value)
     if months is not None:
@@ -219,9 +219,9 @@ def _extract_timeline_months(value: object) -> float | None:
     numbers = [float(token.replace(",", ".")) for token in re.findall(r"\d+(?:[.,]\d+)?", text)]
     if not numbers:
         return None
-    if "mes" in normalized:
+    if "mes" in normalized or "month" in normalized:
         return max(numbers)
-    if "anio" in normalized:
+    if "anio" in normalized or "year" in normalized:
         return max(numbers) * 12.0
     return None
 
