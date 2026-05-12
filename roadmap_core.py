@@ -34,6 +34,99 @@ def norm(text: str) -> str:
     return re.sub(r"\s+", " ", t).strip().lower()
 
 
+_ENGINE_TEXT_EN = {
+    "Seleccionada por alto desempeÃ±o multicriterio.": "Selected due to strong multi-criteria performance.",
+    "Seleccionada por alto desempeño multicriterio.": "Selected due to strong multi-criteria performance.",
+    "Costo estimado por defecto (sin precio pÃºblico confirmado).": "Default estimated cost applied (no confirmed public price).",
+    "Costo estimado por defecto (sin precio público confirmado).": "Default estimated cost applied (no confirmed public price).",
+    "Costo referido a esquema de suscripciÃ³n.": "Cost based on a subscription scheme.",
+    "Costo referido a esquema de suscripción.": "Cost based on a subscription scheme.",
+    "PenalizaciÃ³n por proveedor repetido para mejorar diversidad.": "Penalty applied for repeated provider to improve diversity.",
+    "Penalización por proveedor repetido para mejorar diversidad.": "Penalty applied for repeated provider to improve diversity.",
+    "PenalizaciÃ³n por dominio repetido para ampliar cobertura.": "Penalty applied for repeated domain to broaden coverage.",
+    "Penalización por dominio repetido para ampliar cobertura.": "Penalty applied for repeated domain to broaden coverage.",
+    "Sin candidatos para optimizar.": "No candidates available for optimization.",
+}
+
+_ENGINE_COMPONENT_KEY_EN = {
+    "prioridad_kpi": "kpi_priority",
+    "impacto": "impact",
+    "costo": "cost",
+    "riesgo": "risk",
+    "esfuerzo": "effort",
+    "factor_horizonte": "horizon_factor",
+}
+
+
+def _localize_engine_text(text: object, language: str) -> str:
+    raw = str(text or "")
+    if str(language).lower() != "en":
+        return raw
+    return _ENGINE_TEXT_EN.get(raw, raw)
+
+
+def _localize_engine_driver(driver: object, language: str) -> str:
+    raw = str(driver or "")
+    if str(language).lower() != "en":
+        return raw
+    if "=" not in raw:
+        return _localize_engine_text(raw, language)
+    key, value = raw.split("=", 1)
+    key_txt = _ENGINE_COMPONENT_KEY_EN.get(key.strip(), key.strip())
+    return f"{key_txt}={value}"
+
+
+def _localize_engine_explanation(expl: object, language: str) -> object:
+    if not isinstance(expl, dict) or str(language).lower() != "en":
+        return expl
+    out = dict(expl)
+    out["summary"] = _localize_engine_text(out.get("summary", ""), language)
+
+    assumptions = out.get("assumptions", [])
+    if isinstance(assumptions, list):
+        out["assumptions"] = [_localize_engine_text(item, language) for item in assumptions]
+    elif assumptions:
+        out["assumptions"] = [_localize_engine_text(assumptions, language)]
+    else:
+        out["assumptions"] = []
+
+    drivers = out.get("main_drivers", [])
+    if isinstance(drivers, list):
+        out["main_drivers"] = [_localize_engine_driver(item, language) for item in drivers]
+    elif drivers:
+        out["main_drivers"] = [_localize_engine_driver(drivers, language)]
+    else:
+        out["main_drivers"] = []
+
+    component_scores = out.get("component_scores", {})
+    if isinstance(component_scores, dict):
+        out["component_scores"] = {_ENGINE_COMPONENT_KEY_EN.get(str(k), str(k)): v for k, v in component_scores.items()}
+    return out
+
+
+def _localize_engine_summary(summary: object, language: str) -> object:
+    if not isinstance(summary, dict) or str(language).lower() != "en":
+        return summary
+    out = dict(summary)
+    if "reason" in out:
+        out["reason"] = _localize_engine_text(out.get("reason", ""), language)
+    return out
+
+
+def _localize_level_description(text: object, language: str) -> str:
+    raw = str(text or "").strip()
+    if str(language).lower() != "en" or not raw:
+        return raw
+    key = norm(raw)
+    if key.startswith("sin conocimiento ni aplicacion de estandares de certificacion"):
+        return (
+            "No knowledge or application of certification standards.\n\n"
+            "The company sells mainly in the local market and does not face certification requirements.\n"
+            "It has limited information on applicable standards or compliance protocols."
+        )
+    return raw
+
+
 def clean_solution_description(text: object) -> str:
     compact = re.sub(r"\s+", " ", str(text or "")).strip()
     if not compact:
@@ -513,8 +606,8 @@ def build_roadmap(
                 "gap": gap,
                 "priority": priority,
                 "selected_option_text": options[opt - 1],
-                "current_description": texts[current - 1] if current - 1 < len(texts) else "",
-                "target_description": texts[target - 1] if target - 1 < len(texts) else "",
+                "current_description": _localize_level_description(texts[current - 1] if current - 1 < len(texts) else "", language),
+                "target_description": _localize_level_description(texts[target - 1] if target - 1 < len(texts) else "", language),
             }
         )
 
@@ -583,6 +676,14 @@ def build_roadmap(
             norm(str(e["solution_name"])),
         ),
     )
+    if str(language).lower() == "en":
+        localized_entries: list[dict[str, object]] = []
+        for row in roadmap_entries:
+            item = dict(row)
+            item["engine_explanation"] = _localize_engine_explanation(item.get("engine_explanation", {}), language)
+            localized_entries.append(item)
+        roadmap_entries = localized_entries
+        engine_report = _localize_engine_summary(engine_report, language)
     traceability_entries = build_traceability_entries(kpi_results, roadmap_entries, engine_report)
 
     domain_results = []

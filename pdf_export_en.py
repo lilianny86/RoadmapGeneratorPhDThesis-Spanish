@@ -1407,7 +1407,7 @@ def export_technical_pdf(payload: dict[str, object], output_path: Path) -> None:
         width=card_w,
         title="Current score",
         value=f"{float(result.get('current_score', 0)):.2f}",
-        note="madurez ponderada",
+        note="weighted maturity score",
     )
     _metric_card(
         doc,
@@ -1416,7 +1416,7 @@ def export_technical_pdf(payload: dict[str, object], output_path: Path) -> None:
         width=card_w,
         title="Target score",
         value=f"{float(result.get('target_score', 0)):.2f}",
-        note=f"nivel {int(result.get('target_level_index', 0))}",
+        note=f"level {int(result.get('target_level_index', 0))}",
     )
     _metric_card(
         doc,
@@ -1486,7 +1486,7 @@ def export_technical_pdf(payload: dict[str, object], output_path: Path) -> None:
         for idx, row in enumerate(rows, start=1):
             doc.add_text(f"{idx}. {row.get('solution_name', '')}", size=10.0, bold=True, indent=8, gap_after=0.0)
             doc.add_text(
-                f"KPI: {row.get('kpi', '')} | Prioridad: {float(row.get('priority', 0)):.2f} | Price: {row.get('price', 'Not reported')}",
+                f"KPI: {row.get('kpi', '')} | Priority: {float(row.get('priority', 0)):.2f} | Price: {row.get('price', 'Not reported')}",
                 size=8.8,
                 indent=16,
                 color=PALETTE["slate"],

@@ -14,14 +14,58 @@ def _norm(value: object) -> str:
 
 
 def _horizon_order(plazo: str) -> int:
-    key = _norm(plazo)
-    if "corto" in key:
+    horizon = _canonical_horizon(plazo)
+    if horizon == "Short term":
         return 1
-    if "mediano" in key:
+    if horizon == "Medium term":
         return 2
-    if "largo" in key:
+    if horizon == "Long term":
         return 3
     return 4
+
+
+def _extract_timeline_months(value: object) -> float | None:
+    if value is None:
+        return None
+    text = str(value)
+    normalized = _norm(text)
+    numbers = [float(token.replace(",", ".")) for token in re.findall(r"\d+(?:[.,]\d+)?", text)]
+    if not numbers:
+        return None
+    if "mes" in normalized or "month" in normalized:
+        return max(numbers)
+    if "anio" in normalized or "year" in normalized:
+        return max(numbers) * 12.0
+    return None
+
+
+def _canonical_horizon(value: object) -> str:
+    key = _norm(value)
+    if "corto" in key or "short" in key:
+        return "Short term"
+    if "mediano" in key or "medium" in key:
+        return "Medium term"
+    if "largo" in key or "long" in key:
+        return "Long term"
+    months = _extract_timeline_months(value)
+    if months is not None:
+        if months <= 3:
+            return "Short term"
+        if months <= 6:
+            return "Medium term"
+        if months <= 12:
+            return "Long term"
+    return "Unclassified"
+
+
+def _legacy_horizon_label(canonical_horizon: str) -> str:
+    mapping = {
+        "Short term": "Corto plazo",
+        "Medium term": "Mediano plazo",
+        "Long term": "Largo plazo",
+        "Unclassified": "Sin clasificar",
+    }
+    return mapping.get(canonical_horizon, "Sin clasificar")
 
 
 def _to_float(value: Any, default: float | None = None) -> float | None:
@@ -61,6 +105,10 @@ class EngineConfig:
     budget_long_clp: float | None = None
     horizon_factor: dict[str, float] = field(
         default_factory=lambda: {
+            "Short term": 1.0,
+            "Medium term": 0.92,
+            "Long term": 0.84,
+            "Unclassified": 0.75,
             "Corto plazo": 1.0,
             "Mediano plazo": 0.92,
             "Largo plazo": 0.84,
@@ -69,12 +117,12 @@ class EngineConfig:
     )
 
     def budget_for(self, horizon: str) -> float | None:
-        key = _norm(horizon)
-        if "corto" in key:
+        canonical = _canonical_horizon(horizon)
+        if canonical == "Short term":
             return self.budget_short_clp
-        if "mediano" in key:
+        if canonical == "Medium term":
             return self.budget_medium_clp
-        if "largo" in key:
+        if canonical == "Long term":
             return self.budget_long_clp
         return None
 
@@ -218,8 +266,15 @@ def _score_candidates(candidates: list[dict[str, object]], cfg: EngineConfig) ->
         contrib_risk = cfg.weight_risk * risk_n
         contrib_effort = cfg.weight_effort * effort_n
         base = contrib_priority + contrib_impact + contrib_cost + contrib_risk + contrib_effort
-        horizon = str(row.get("plazo", "Sin clasificar"))
-        horizon_mult = cfg.horizon_factor.get(horizon, cfg.horizon_factor.get("Sin clasificar", 0.75))
+        horizon = _canonical_horizon(row.get("plazo", "Unclassified"))
+        legacy_horizon = _legacy_horizon_label(horizon)
+        horizon_mult = cfg.horizon_factor.get(
+            horizon,
+            cfg.horizon_factor.get(
+                legacy_horizon,
+                cfg.horizon_factor.get("Unclassified", cfg.horizon_factor.get("Sin clasificar", 0.75)),
+            ),
+        )
         score = base * horizon_mult
         if not has_known_cost:
             score -= cfg.penalty_unknown_cost
@@ -249,7 +304,7 @@ def _can_fit_budget(
     if cost is None:
         # Permitimos costo no determinado para no bloquear iniciativas sin precio público.
         return True
-    horizon = str(candidate.get("plazo", "Sin clasificar"))
+    horizon = _canonical_horizon(candidate.get("plazo", "Unclassified"))
     if cfg.budget_total_clp is not None and (used_total + cost) > cfg.budget_total_clp:
         return False
     h_budget = cfg.budget_for(horizon)
@@ -352,7 +407,7 @@ def optimize_recommendations(
             cost = _to_float(c.get("cost_estimated_clp"), default=None)
             if cost is not None:
                 used_total += cost
-                h = str(c.get("plazo", "Sin clasificar"))
+                h = _canonical_horizon(c.get("plazo", "Unclassified"))
                 used_by_horizon[h] = used_by_horizon.get(h, 0.0) + cost
             provider_count[provider] = provider_count.get(provider, 0) + 1
             domain_count[domain] = domain_count.get(domain, 0) + 1
@@ -389,7 +444,7 @@ def optimize_recommendations(
         cost = _to_float(c.get("cost_estimated_clp"), default=None)
         if cost is not None:
             used_total += cost
-            h = str(c.get("plazo", "Sin clasificar"))
+            h = _canonical_horizon(c.get("plazo", "Unclassified"))
             used_by_horizon[h] = used_by_horizon.get(h, 0.0) + cost
         provider_count[provider] = provider_count.get(provider, 0) + 1
         domain_count[domain] = domain_count.get(domain, 0) + 1
@@ -445,4 +500,3 @@ def optimize_recommendations(
         },
     }
     return explained, report
-

@@ -809,9 +809,12 @@ def main() -> None:
         format_func=lambda x: company_type_labels.get(x, x),
     )
     st.sidebar.markdown("---")
-    title_company_type = _t(language, "title_company_default") if company_type == "__select__" else company_type_labels.get(company_type, _t(language, "title_company_default"))
     with top_left:
-        st.title(f"{_t(language, 'main_title')} {title_company_type}")
+        if company_type == "__select__":
+            st.title(_t(language, "main_title"))
+        else:
+            selected_company_type = company_type_labels.get(company_type, "")
+            st.title(f"{_t(language, 'main_title')} {selected_company_type}")
 
     if company_type == "__select__":
         st.info(_t(language, "select_company_type"))
