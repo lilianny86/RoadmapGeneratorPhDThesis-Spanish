@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 from pdf_export import export_friendly_pdf as export_friendly_pdf_es, export_technical_pdf
 from pdf_export_en import export_friendly_pdf as export_friendly_pdf_en
@@ -226,6 +227,91 @@ def _render_language_flag(language: str) -> None:
     )
 
 
+def _apply_no_translate_guard(language: str) -> None:
+    lang = _lang(language)
+    nonce = datetime.now().strftime("%Y%m%d%H%M%S%f")
+    components.html(
+        f"""
+<script>
+(function () {{
+  try {{
+    const doc = window.parent && window.parent.document;
+    if (!doc) return;
+
+    const html = doc.documentElement;
+    const body = doc.body;
+    if (html) {{
+      html.setAttribute("lang", "{lang}");
+      html.setAttribute("translate", "no");
+      html.classList.add("notranslate");
+    }}
+    if (body) {{
+      body.setAttribute("translate", "no");
+      body.classList.add("notranslate");
+    }}
+
+    const app = doc.querySelector(".stApp");
+    if (app) {{
+      app.setAttribute("translate", "no");
+      app.classList.add("notranslate");
+    }}
+
+    let gMeta = doc.querySelector('meta[name="google"]');
+    if (!gMeta) {{
+      gMeta = doc.createElement("meta");
+      gMeta.setAttribute("name", "google");
+      doc.head.appendChild(gMeta);
+    }}
+    gMeta.setAttribute("content", "notranslate");
+
+    let gbMeta = doc.querySelector('meta[name="googlebot"]');
+    if (!gbMeta) {{
+      gbMeta = doc.createElement("meta");
+      gbMeta.setAttribute("name", "googlebot");
+      doc.head.appendChild(gbMeta);
+    }}
+    gbMeta.setAttribute("content", "notranslate");
+
+    const keep = [
+      ".stApp",
+      '[data-testid="stAppViewContainer"]',
+      '[data-testid="stHeader"]',
+      '[data-testid="stSidebar"]',
+      '[data-testid="stMainBlockContainer"]',
+      ".lang-code-chip"
+    ];
+    keep.forEach((selector) => {{
+      doc.querySelectorAll(selector).forEach((el) => {{
+        el.setAttribute("translate", "no");
+        el.classList.add("notranslate");
+      }});
+    }});
+
+    doc.querySelectorAll('input[aria-label^="RUT"], input[placeholder*="12.345.678-5"]').forEach((el) => {{
+      el.setAttribute("translate", "no");
+      el.classList.add("notranslate");
+    }});
+
+    doc.querySelectorAll("label, span, p, div").forEach((el) => {{
+      const txt = (el.textContent || "").trim().toUpperCase();
+      if (txt === "RUT" || txt === "RUT*" || txt.startsWith("RUT INV")) {{
+        el.setAttribute("translate", "no");
+        el.classList.add("notranslate");
+      }}
+    }});
+  }} catch (e) {{
+    console.warn("No-translate guard error:", e);
+  }}
+}})();
+</script>
+<div style="display:none" aria-hidden="true">{nonce}</div>
+        """,
+        height=0,
+        width=0,
+        scrolling=False,
+    )
+
+
 def _company_name_for_filename(value: str) -> str:
     text = unicodedata.normalize("NFC", str(value or "")).strip()
     text = re.sub(r'[<>:"/\\|?*\x00-\x1F]+', "", text)
@@ -311,6 +397,10 @@ def _render_styles() -> None:
 .stApp {
   font-family: "Source Sans 3", sans-serif;
   color: var(--agri-ink);
+}
+
+.notranslate, [translate="no"] {
+  -webkit-user-select: text;
 }
 
 [data-testid="stAppViewContainer"] {
@@ -968,6 +1058,7 @@ def main() -> None:
         st.session_state["ui_language"] = _lang(str(qp_lang))
 
     language = _lang(str(st.session_state.get("ui_language", "es")))
+    _apply_no_translate_guard(language)
 
     top_left, top_right = st.columns([8, 2])
     with top_right:
