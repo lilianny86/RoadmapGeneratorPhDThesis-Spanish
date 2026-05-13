@@ -240,10 +240,13 @@ def to_float(txt: str, default: float = 1.0) -> float:
         return default
 
 
-def profile_cfg(profile: str) -> dict[str, str]:
+def profile_cfg(profile: str, language: str = "es") -> dict[str, str]:
+    lang = str(language).lower()
+    label_small = "Small-sized enterprise" if lang == "en" else "Pequeña empresa"
+    label_medium = "Medium-sized enterprise" if lang == "en" else "Mediana empresa"
     cfg = {
-        "small": {"label": "Small enterprise", "q_file": "Cuestionario pequenas empresas.docx", "model_hint": "pequen", "weight_hint": "pequen", "sol_hint": "pequen"},
-        "medium": {"label": "Medium-sized enterprise", "q_file": "Cuestionario medianas empresas.docx", "model_hint": "median", "weight_hint": "median", "sol_hint": "median"},
+        "small": {"label": label_small, "q_file": "Cuestionario pequenas empresas.docx", "model_hint": "pequen", "weight_hint": "pequen", "sol_hint": "pequen"},
+        "medium": {"label": label_medium, "q_file": "Cuestionario medianas empresas.docx", "model_hint": "median", "weight_hint": "median", "sol_hint": "median"},
     }
     if profile not in cfg:
         raise RuntimeError("company type must be small or medium")
@@ -251,7 +254,7 @@ def profile_cfg(profile: str) -> dict[str, str]:
 
 
 def load_profile_data(root: Path, profile: str, language: str = "es") -> dict[str, object]:
-    cfg = profile_cfg(profile)
+    cfg = profile_cfg(profile, language=language)
     model_xlsx = root / "assets" / "modelo_de_madurez" / "MM Adopcion-Tec-Pymes v2.0 validado expertos INIA.xlsx"
     weights_xlsx = root / "assets" / "modelo_de_madurez" / "Ponderaciones por KPI.xlsx"
     q_docx = root / "assets" / "cuestionarios" / cfg["q_file"]

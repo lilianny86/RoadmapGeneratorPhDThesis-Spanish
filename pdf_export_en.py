@@ -436,7 +436,7 @@ class SimplePdf:
     ) -> None:
         if text is None:
             return
-        line_height = size * 1.35
+        line_height = size * 1.40
         usable_width = self.page_width - (2 * self.margin) - indent
         max_chars = int(usable_width / (size * 0.53)) if usable_width > 0 else 30
         paragraphs = str(text).splitlines() or [str(text)]
@@ -472,7 +472,7 @@ class SimplePdf:
         x = max((self.page_width - width_est) / 2.0, self.margin)
         self._ensure_space(size * 1.4)
         self.current_ops.append(self._text_op(clean, x=x, y=self.current_y, size=size, bold=bold, color=color))
-        self.current_y -= size * 1.35
+        self.current_y -= size * 1.40
         if gap_after > 0:
             self.current_y -= gap_after
 
@@ -490,8 +490,8 @@ class SimplePdf:
         )
         self.current_y -= gap_after
 
-    def add_section_header(self, title: str, *, accent: tuple[float, float, float] = PALETTE["forest"], gap_after: float = 8.0) -> None:
-        block_h = 22.0
+    def add_section_header(self, title: str, *, accent: tuple[float, float, float] = PALETTE["forest"], gap_after: float = 9.0) -> None:
+        block_h = 24.0
         self._ensure_space(block_h + gap_after + 2)
         y_top = self.current_y
         y_bottom = y_top - block_h
@@ -506,7 +506,7 @@ class SimplePdf:
             self._text_op(
                 title,
                 x=self.margin + 10,
-                y=y_bottom + 7,
+                y=y_bottom + 8.2,
                 size=11.2,
                 bold=True,
                 color=(1.0, 1.0, 1.0),
@@ -764,7 +764,7 @@ def _render_budget_table(
     table_width = doc.page_width - (2 * doc.margin)
     col_widths = [0.30, 0.12, 0.14, 0.14, 0.30]
     col_widths = [w * table_width for w in col_widths]
-    row_h = 22.0
+    row_h = 24.0
 
     def draw_row(values: list[str], *, fill: tuple[float, float, float], text_color: tuple[float, float, float], bold: bool = False, header: bool = False) -> None:
         doc._ensure_space(row_h + 2)
@@ -779,7 +779,7 @@ def _render_budget_table(
                 doc,
                 cell,
                 x=x,
-                y=y_bottom + 7.2,
+                y=y_bottom + 8.3,
                 width=width,
                 size=8.8,
                 bold=bold,
@@ -829,6 +829,52 @@ def _render_budget_table(
 
 def _entry_key(row: dict[str, object]) -> tuple[str, str]:
     return (_norm(str(row.get("solution_name", ""))), _norm(str(row.get("kpi", ""))))
+
+
+def _estimate_text_block_height(
+    doc: SimplePdf,
+    text: object,
+    *,
+    size: float,
+    indent: float = 0.0,
+    gap_after: float = 0.0,
+) -> float:
+    line_height = size * 1.40
+    if text is None:
+        return max(gap_after, 0.0)
+    usable_width = doc.page_width - (2 * doc.margin) - indent
+    max_chars = int(usable_width / (size * 0.53)) if usable_width > 0 else 30
+    paragraphs = str(text).splitlines() or [str(text)]
+    total = 0.0
+    for para in paragraphs:
+        clean = doc._latin1(para)
+        if not clean:
+            total += line_height * 0.7
+            continue
+        total += len(doc._wrap(clean, max_chars)) * line_height
+    return total + max(gap_after, 0.0)
+
+
+def _estimate_solution_item_height(
+    doc: SimplePdf,
+    *,
+    title: str,
+    meta: str,
+    url: str | None,
+    description: str,
+    title_size: float,
+    meta_size: float,
+    url_size: float,
+    desc_size: float,
+    indent: float,
+) -> float:
+    total = 0.0
+    total += _estimate_text_block_height(doc, title, size=title_size, indent=indent, gap_after=0.0)
+    total += _estimate_text_block_height(doc, meta, size=meta_size, indent=indent, gap_after=0.0)
+    if url:
+        total += _estimate_text_block_height(doc, url, size=url_size, indent=indent, gap_after=0.0)
+    total += _estimate_text_block_height(doc, description, size=desc_size, indent=indent, gap_after=2.2)
+    return total
 
 
 def _split_rows_in_buckets(rows: list[dict[str, object]], bucket_count: int) -> list[list[dict[str, object]]]:
@@ -891,8 +937,28 @@ def _render_plan_bucket(
         doc.add_text("No actions were identified for this time window.", size=9.2, color=PALETTE["muted"], indent=10)
         return
     for i, row in enumerate(items, start=1):
+        item_title = f"{i}. {row.get('solution_name', '')}"
+        item_meta = f"Focus KPI: {row.get('kpi', '')} | Stage: {_horizon_label(str(row.get('plazo', '')))} | Cost: {row.get('price', 'Not reported')}"
+        urls = _solution_urls(row, max_urls=1)
+        item_url = f"URL: {urls[0]}" if urls else None
+        item_desc = f"Description: {_brief(str(row.get('solution_description', '')), 180) or 'Description not available.'}"
+        item_h = _estimate_solution_item_height(
+            doc,
+            title=item_title,
+            meta=item_meta,
+            url=item_url,
+            description=item_desc,
+            title_size=9.8,
+            meta_size=8.5,
+            url_size=8.2,
+            desc_size=8.4,
+            indent=16,
+        )
+        # Keep each solution block together to avoid visible line overlap in dense pages.
+        doc._ensure_space(item_h + 3.0)
+
         doc.add_text(
-            f"{i}. {row.get('solution_name', '')}",
+            item_title,
             size=9.8,
             bold=True,
             indent=8,
@@ -900,23 +966,22 @@ def _render_plan_bucket(
             gap_after=0.0,
         )
         doc.add_text(
-            f"Focus KPI: {row.get('kpi', '')} | Stage: {_horizon_label(str(row.get('plazo', '')))} | Cost: {row.get('price', 'Not reported')}",
+            item_meta,
             size=8.5,
             indent=16,
             color=PALETTE["slate"],
             gap_after=0.0,
         )
-        urls = _solution_urls(row, max_urls=1)
-        if urls:
+        if item_url:
             doc.add_text(
-                f"URL: {urls[0]}",
+                item_url,
                 size=8.2,
                 indent=16,
                 color=PALETTE["slate"],
                 gap_after=0.0,
             )
         doc.add_text(
-            f"Description: {_brief(str(row.get('solution_description', '')), 180) or 'Description not available.'}",
+            item_desc,
             size=8.4,
             indent=16,
             color=PALETTE["muted"],
@@ -1135,6 +1200,11 @@ def _append_backlog_page(doc: SimplePdf, entries: list[dict[str, object]], *, co
             area = str(row.get("domain", "")).strip() or "No key area"
             kpi = str(row.get("kpi", "")).strip() or "Not reported"
             cost = str(row.get("price", "Not reported")).strip() or "Not reported"
+            backlog_title = f"[ ] {idx}. {name}"
+            backlog_meta = f"Key area: {area} | KPI: {kpi} | Cost: {cost}"
+            backlog_h = _estimate_text_block_height(doc, backlog_title, size=9.4, indent=8, gap_after=0.0)
+            backlog_h += _estimate_text_block_height(doc, backlog_meta, size=8.2, indent=18, gap_after=1.0)
+            doc._ensure_space(backlog_h + 2.0)
             doc.add_text(f"[ ] {idx}. {name}", size=9.4, bold=True, indent=8, color=PALETTE["forest_dark"], gap_after=0.0)
             doc.add_text(
                 f"Key area: {area} | KPI: {kpi} | Cost: {cost}",
@@ -1549,42 +1619,59 @@ def export_friendly_pdf(payload: dict[str, object], output_path: Path) -> None:
         note="Tip: use this table to plan quarterly cash flow. If a row has no cost, estimate it before scheduling.",
     )
 
-    doc.add_section_header("Immediate-impact actions", accent=PALETTE["forest"])
+    doc.add_section_header("Quick Wins", accent=PALETTE["forest"])
     if not quick_wins:
         doc.add_text("No actions were identified for the selected target level.", size=10)
     else:
         for i, item in enumerate(quick_wins, start=1):
             horizon = str(item.get("plazo", ""))
             marker = _horizon_color(horizon)
-            doc._ensure_space(44)
-            y_top = doc.current_y + 3
-            y_bottom = y_top - 38
+            item_title = f"{i}. {item.get('solution_name', '')}"
+            item_meta = f"{_horizon_label(horizon)} | KPI: {item.get('kpi', '')} | Cost: {item.get('price', 'Not reported')}"
+            urls = _solution_urls(item, max_urls=1)
+            item_url = f"URL: {urls[0]}" if urls else None
+            item_desc = f"Description: {_brief(str(item.get('solution_description', '')), 170) or 'Description not available.'}"
+            item_h = _estimate_solution_item_height(
+                doc,
+                title=item_title,
+                meta=item_meta,
+                url=item_url,
+                description=item_desc,
+                title_size=10.8,
+                meta_size=9.0,
+                url_size=8.7,
+                desc_size=9.0,
+                indent=12,
+            )
+            marker_h = max(item_h - 4.0, 38.0)
+            doc._ensure_space(item_h + 4.0)
+            y_top = doc.current_y + 2.0
+            y_bottom = y_top - marker_h
             doc.add_rect(
                 x=doc.margin + 4,
                 y=y_bottom,
                 width=3.5,
-                height=38,
+                height=marker_h,
                 fill_color=marker,
             )
-            doc.add_text(f"{i}. {item.get('solution_name', '')}", size=10.8, bold=True, indent=12, color=PALETTE["forest_dark"], gap_after=0.0)
+            doc.add_text(item_title, size=10.8, bold=True, indent=12, color=PALETTE["forest_dark"], gap_after=0.0)
             doc.add_text(
-                f"{_horizon_label(horizon)} | KPI: {item.get('kpi', '')} | Cost: {item.get('price', 'Not reported')}",
+                item_meta,
                 size=9.0,
                 indent=12,
                 color=PALETTE["slate"],
                 gap_after=0.0,
             )
-            urls = _solution_urls(item, max_urls=1)
-            if urls:
+            if item_url:
                 doc.add_text(
-                    f"URL: {urls[0]}",
+                    item_url,
                     size=8.7,
                     indent=12,
                     color=PALETTE["slate"],
                     gap_after=0.0,
                 )
             doc.add_text(
-                f"Description: {_brief(str(item.get('solution_description', '')), 170) or 'Description not available.'}",
+                item_desc,
                 size=9.0,
                 indent=12,
                 color=PALETTE["muted"],

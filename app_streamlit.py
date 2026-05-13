@@ -64,6 +64,8 @@ UI_TEXTS = {
         "company_name_placeholder": "Ingrese nombre empresa",
         "email": "Correo*",
         "target_level": "Nivel objetivo",
+        "target_level_help_small": "N1-Básico: operación principalmente manual y poco estandarizada.\nN2-Intermedio: procesos parcialmente definidos con adopción digital funcional.\nN3-Superior: procesos estandarizados, mayor integración y gestión basada en datos.",
+        "target_level_help_medium": "N1-Ad hoc: gestión reactiva, baja estandarización y escasa integración.\nN2-Básico: formalización inicial y control operativo básico.\nN3-Intermedio: coordinación entre áreas y seguimiento regular de KPI.\nN4-Superior: gestión integrada, mejora continua y alta trazabilidad.",
         "improvement_budget": "Presupuesto para mejoras*",
         "required_note": "* Campos obligatorios",
         "invalid_rut": "RUT inválido. Verifica el dígito verificador.",
@@ -85,6 +87,9 @@ UI_TEXTS = {
         "download_es": "Descargar Roadmap PDF (ES)",
         "download_en": "Descargar Roadmap PDF (EN)",
         "select_company_type": "Seleccione el tipo de empresa en el panel de la izquierda para continuar.",
+        "intro_title": "¿Qué es RoGen y cómo comenzar?",
+        "intro_p1": "RoGen genera automáticamente una hoja de ruta personalizada para PyMEs agrícolas a partir del perfil de la empresa y las respuestas del cuestionario. Convierte los hallazgos del diagnóstico en acciones priorizadas según impacto, urgencia y horizonte temporal. La aplicación progresiva de esta ruta favorece mejoras medibles en productividad, trazabilidad, gestión de recursos, cumplimiento normativo y capacidades de digitalización.",
+        "intro_p2": "Para comenzar, despliegue la barra lateral izquierda y seleccione el tamaño de empresa (Pequeña o Mediana). Complete los campos obligatorios, defina el nivel objetivo (situación futura deseada) y elija el rango de presupuesto que mejor represente su contexto. Luego responda el cuestionario según la situación actual de su empresa, no la deseada. Con esta información, RoGen prioriza acciones factibles y genera un roadmap por etapas, listo para implementar.",
         "cannot_load_profile": "No se pudo cargar el perfil",
         "roadmap_error": "No se pudo generar el roadmap",
         "language_button": "English",
@@ -114,12 +119,14 @@ UI_TEXTS = {
         "company_data_header": "Company Data",
         "company_type": "Company type*",
         "company_type_select": "------Select------",
-        "company_small": "Small enterprise",
+        "company_small": "Small-sized enterprise",
         "company_medium": "Medium-sized enterprise",
         "company_name": "Company name*",
         "company_name_placeholder": "Enter company name",
         "email": "Email*",
         "target_level": "Target level",
+        "target_level_help_small": "N1-Basic: mostly manual operations with limited standardization.\nN2-Intermediate: partially defined processes with functional digital adoption.\nN3-Advanced: standardized processes, stronger integration, and data-driven management.",
+        "target_level_help_medium": "N1-Ad hoc: reactive management, low standardization, and limited integration.\nN2-Basic: initial formalization and basic operational control.\nN3-Intermediate: cross-area coordination and regular KPI monitoring.\nN4-Advanced: integrated management, continuous improvement, and high traceability.",
         "improvement_budget": "Improvement budget*",
         "required_note": "* Required fields",
         "invalid_rut": "Invalid RUT. Please verify the check digit.",
@@ -141,6 +148,9 @@ UI_TEXTS = {
         "download_es": "Download PDF Roadmap (ES)",
         "download_en": "Download PDF Roadmap (EN)",
         "select_company_type": "Select a company type to continue.",
+        "intro_title": "What is RoGen and how do I get started?",
+        "intro_p1": "RoGen is an automated generator of customized roadmaps that uses company characteristics and questionnaire responses as input. RoGen converts diagnostic results into a structured roadmap tailored for agricultural small and medium-sized enterprises (SMEs). The assessment process identifies maturity gaps and organizes solutions according to priority, impact, and time horizon. Progressive implementation enables measurable improvements in productivity, traceability, resource management, regulatory compliance, and digital capabilities.",
+        "intro_p2": "To begin, open the left sidebar and select the company size category (Small company or Medium-sized company). Complete the required fields, choose the target level that represents the desired future state, and select the budget range that best reflects your company’s context. Respond to the questionnaire based on the current situation rather than the desired state. Based on this information, RoGen prioritizes feasible actions and generates a phased, implementable roadmap.",
         "cannot_load_profile": "Unable to load profile",
         "roadmap_error": "The roadmap could not be generated",
         "language_button": "Español",
@@ -184,6 +194,15 @@ def _t(lang: str, key: str, **kwargs: object) -> str:
 
 def _budget_labels(lang: str) -> dict[str, str]:
     return BUDGET_LABELS_BY_LANG[_lang(lang)]
+
+
+def _target_level_help(company_type: str, language: str) -> str:
+    ctype = str(company_type).strip().lower()
+    if ctype == "small":
+        return _t(language, "target_level_help_small")
+    if ctype == "medium":
+        return _t(language, "target_level_help_medium")
+    return ""
 
 
 @st.cache_data(show_spinner=False)
@@ -602,6 +621,43 @@ h1, h2, h3 {
   margin-bottom: 0.8rem;
 }
 
+.app-intro {
+  background:
+    linear-gradient(118deg, rgba(248, 244, 233, 0.92) 0%, rgba(232, 239, 226, 0.94) 58%, rgba(219, 233, 221, 0.90) 100%);
+  border: 1px solid rgba(53, 94, 59, 0.30);
+  border-left: 6px solid #355e3b;
+  border-radius: 12px;
+  box-shadow: 0 10px 22px rgba(47, 69, 50, 0.10);
+  padding: 1rem 1.06rem;
+  margin-top: 0.55rem;
+  margin-bottom: 0.95rem;
+}
+
+.app-intro-title {
+  color: #1f4f2f;
+  font-family: "Bitter", serif;
+  font-size: 1.15rem;
+  font-weight: 800;
+  line-height: 1.25;
+  margin: 0 0 0.50rem 0;
+}
+
+.app-intro p {
+  margin: 0 0 0.56rem 0;
+  color: #294436;
+  font-family: "Source Sans 3", sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.46;
+  text-align: justify;
+  text-justify: inter-word;
+  hyphens: auto;
+}
+
+.app-intro p:last-child {
+  margin-bottom: 0;
+}
+
 .app-warn {
   background: linear-gradient(90deg, rgba(245, 231, 189, 0.84), rgba(252, 247, 224, 0.96));
   border: 1px solid rgba(138, 103, 68, 0.38);
@@ -698,11 +754,22 @@ h1, h2, h3 {
   }
 
   .app-tip,
+  .app-intro,
   .app-warn,
   .app-status {
     font-size: 0.95rem;
     padding: 0.74rem 0.82rem;
     line-height: 1.36;
+  }
+
+  .app-intro-title {
+    font-size: 1.03rem;
+    margin-bottom: 0.42rem;
+  }
+
+  .app-intro p {
+    font-size: 0.93rem;
+    line-height: 1.40;
   }
 
   .app-warn-meta,
@@ -726,6 +793,7 @@ h1, h2, h3 {
   }
 
   .app-tip,
+  .app-intro,
   .app-warn,
   .app-status {
     border-left-width: 4px;
@@ -999,7 +1067,7 @@ h1, h2, h3 {
     )
 
 
-def _render_sidebar(profile: dict[str, object], max_level: int, language: str) -> dict[str, object]:
+def _render_sidebar(profile: dict[str, object], max_level: int, language: str, company_type: str) -> dict[str, object]:
     budget_labels = _budget_labels(language)
     st.sidebar.header(_t(language, "company_data_header"))
     company_name = st.sidebar.text_input(_t(language, "company_name"), value="", placeholder=_t(language, "company_name_placeholder"))
@@ -1027,7 +1095,14 @@ def _render_sidebar(profile: dict[str, object], max_level: int, language: str) -
         )
         st.sidebar.markdown(f"<div class='field-error'>{html.escape(_t(language, 'invalid_rut'))}</div>", unsafe_allow_html=True)
     company_email = st.sidebar.text_input(_t(language, "email"), value="")
-    target_level = st.sidebar.slider(_t(language, "target_level"), min_value=1, max_value=max_level, value=min(3, max_level), step=1)
+    target_level = st.sidebar.slider(
+        _t(language, "target_level"),
+        min_value=1,
+        max_value=max_level,
+        value=min(3, max_level),
+        step=1,
+        help=_target_level_help(company_type, language),
+    )
     budget_total_key = st.sidebar.radio(
         _t(language, "improvement_budget"),
         options=BUDGET_OPTIONS,
@@ -1036,6 +1111,13 @@ def _render_sidebar(profile: dict[str, object], max_level: int, language: str) -
     )
     st.sidebar.markdown(f"<div class='sidebar-required-note'>{html.escape(_t(language, 'required_note'))}</div>", unsafe_allow_html=True)
 
+    if str(company_type).strip().lower() == "small":
+        localized_profile_label = _t(language, "company_small")
+    elif str(company_type).strip().lower() == "medium":
+        localized_profile_label = _t(language, "company_medium")
+    else:
+        localized_profile_label = str(profile.get("label", ""))
+
     return {
         "company_name": company_name,
         "company_rut": company_rut,
@@ -1043,7 +1125,7 @@ def _render_sidebar(profile: dict[str, object], max_level: int, language: str) -
         "target_level": target_level,
         "budget_total_label": budget_labels.get(str(budget_total_key), str(budget_total_key)),
         "budget_total_clp": BUDGET_TO_CLP[str(budget_total_key)],
-        "profile_label": profile.get("label", ""),
+        "profile_label": localized_profile_label,
     }
 
 
@@ -1292,6 +1374,22 @@ def _render_last_result_summary(last: dict[str, object], language: str) -> None:
         )
 
 
+def _render_intro_block(language: str) -> None:
+    title = html.escape(_t(language, "intro_title"))
+    paragraph_1 = html.escape(_t(language, "intro_p1"))
+    paragraph_2 = html.escape(_t(language, "intro_p2"))
+    st.markdown(
+        f"""
+<section class="app-intro" aria-label="{title}">
+  <div class="app-intro-title">{title}</div>
+  <p>{paragraph_1}</p>
+  <p>{paragraph_2}</p>
+</section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def main() -> None:
     st.set_page_config(page_title="Generador de Roadmap Personalizado / Customized Roadmap Generator", layout="wide")
     _render_styles()
@@ -1331,6 +1429,7 @@ def main() -> None:
 
     if company_type == "__select__":
         st.markdown(f"<div class='app-tip'>{html.escape(_t(language, 'select_company_type'))}</div>", unsafe_allow_html=True)
+        _render_intro_block(language)
         return
 
     try:
@@ -1341,7 +1440,7 @@ def main() -> None:
 
     questions: list[dict[str, Any]] = [dict(x) for x in profile.get("questions", [])]
     max_level = max((len(q.get("level_labels", [])) for q in questions), default=5)
-    ui_cfg = _render_sidebar(profile, max_level=max_level, language=language)
+    ui_cfg = _render_sidebar(profile, max_level=max_level, language=language, company_type=company_type)
     missing_required = _missing_required_company_fields(company_type, ui_cfg, language)
     if missing_required:
         warning_text = html.escape(_t(language, "missing_required_warning"))
