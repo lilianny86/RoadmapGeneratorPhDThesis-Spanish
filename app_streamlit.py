@@ -78,6 +78,8 @@ UI_TEXTS = {
         "answer": "Respuesta",
         "generate": "Generar Roadmap",
         "generating": "Generando roadmap y archivos de salida...",
+        "generating_overlay_title": "Generando Roadmap",
+        "generating_overlay_text": "El proceso puede tardar unos segundos.",
         "generated_ok": "Roadmap generado correctamente.",
         "current_score": "Puntaje actual",
         "target_score": "Puntaje objetivo",
@@ -139,6 +141,8 @@ UI_TEXTS = {
         "answer": "Answer",
         "generate": "Generate Roadmap",
         "generating": "Generating roadmap and output files...",
+        "generating_overlay_title": "Generating Roadmap",
+        "generating_overlay_text": "The process may take a few seconds.",
         "generated_ok": "Roadmap generated successfully.",
         "current_score": "Current Score",
         "target_score": "Target Score",
@@ -425,6 +429,62 @@ def _render_styles() -> None:
 .stApp {
   font-family: "Source Sans 3", sans-serif;
   color: var(--agri-ink);
+}
+
+.rogen-loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000004;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(22, 34, 28, 0.34);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.rogen-loading-card {
+  width: min(92vw, 540px);
+  border-radius: 14px;
+  border: 1px solid rgba(201, 216, 191, 0.45);
+  background:
+    linear-gradient(118deg, rgba(248, 244, 233, 0.98) 0%, rgba(232, 239, 226, 0.98) 60%, rgba(219, 233, 221, 0.95) 100%);
+  box-shadow: 0 20px 46px rgba(9, 25, 17, 0.34);
+  padding: 1.08rem 1rem 0.98rem;
+  text-align: center;
+}
+
+.rogen-loading-spinner {
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 0.75rem;
+  border-radius: 50%;
+  border: 4px solid rgba(47, 109, 60, 0.20);
+  border-top-color: #2f6d3c;
+  animation: rogen-spin 0.9s linear infinite;
+}
+
+.rogen-loading-title {
+  font-family: "Bitter", serif;
+  color: #1f4f2f;
+  font-size: 1.18rem;
+  font-weight: 800;
+  line-height: 1.2;
+  margin-bottom: 0.36rem;
+}
+
+.rogen-loading-text {
+  color: #294436;
+  font-size: 0.96rem;
+  font-weight: 600;
+  line-height: 1.42;
+  text-wrap: balance;
+}
+
+@keyframes rogen-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .notranslate, [translate="no"] {
@@ -782,6 +842,28 @@ h1, h2, h3 {
   h1 {
     font-size: 1.72rem !important;
     line-height: 1.16 !important;
+  }
+
+  .rogen-loading-card {
+    width: min(94vw, 360px);
+    border-radius: 12px;
+    padding: 0.90rem 0.82rem 0.82rem;
+  }
+
+  .rogen-loading-spinner {
+    width: 36px;
+    height: 36px;
+    border-width: 3.5px;
+    margin-bottom: 0.58rem;
+  }
+
+  .rogen-loading-title {
+    font-size: 1.02rem;
+  }
+
+  .rogen-loading-text {
+    font-size: 0.88rem;
+    line-height: 1.34;
   }
 
   .summary-value {
@@ -1390,6 +1472,63 @@ def _render_intro_block(language: str) -> None:
     )
 
 
+def _scroll_to_result_once() -> None:
+    if not bool(st.session_state.get("scroll_to_top_result", False)):
+        return
+    nonce = int(st.session_state.get("scroll_to_top_nonce", 0))
+    js_block = """
+<script>
+const smoothScrollTop = () => {
+  try {
+    const frame = window.parent;
+    const doc = frame.document;
+    const anchor = doc.getElementById("rogen-result-anchor");
+    if (anchor && anchor.scrollIntoView) {
+      anchor.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    const targets = [
+      doc.querySelector("section.main"),
+      doc.querySelector(".main"),
+      doc.querySelector('[data-testid="stMain"]'),
+      doc.querySelector('[data-testid="stAppViewContainer"]')
+    ].filter(Boolean);
+    targets.forEach((el) => {
+      if (anchor && el.contains(anchor)) return;
+      if (el.scrollTo) el.scrollTo({ top: Math.max((el.scrollTop || 0) - 8, 0), behavior: "smooth" });
+    });
+    if (!anchor) frame.scrollTo({ top: 0, behavior: "smooth" });
+  } catch (_) {}
+};
+setTimeout(smoothScrollTop, 30);
+setTimeout(smoothScrollTop, 160);
+setTimeout(smoothScrollTop, 360);
+</script>
+<div style="display:none">scroll-nonce-__NONCE__</div>
+    """
+    components.html(
+        js_block.replace("__NONCE__", str(nonce)),
+        height=0,
+    )
+    st.session_state["scroll_to_top_result"] = False
+
+
+def _show_generation_overlay(slot: st.delta_generator.DeltaGenerator, language: str) -> None:
+    title = html.escape(_t(language, "generating_overlay_title"))
+    text = html.escape(_t(language, "generating_overlay_text"))
+    slot.markdown(
+        f"""
+<div class="rogen-loading-overlay" role="status" aria-live="assertive" aria-busy="true">
+  <div class="rogen-loading-card">
+    <div class="rogen-loading-spinner" aria-hidden="true"></div>
+    <div class="rogen-loading-title">{title}</div>
+    <div class="rogen-loading-text">{text}</div>
+  </div>
+</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def main() -> None:
     st.set_page_config(page_title="Generador de Roadmap Personalizado / Customized Roadmap Generator", layout="wide")
     _render_styles()
@@ -1500,9 +1639,11 @@ def main() -> None:
         )
 
     if st.button(_t(language, "generate"), type="primary", use_container_width=True):
+        overlay_slot = st.empty()
         try:
             answers = _collect_answers(company_type, questions)
             engine_cfg = build_engine_config(None, _build_overrides(ui_cfg))
+            _show_generation_overlay(overlay_slot, language)
 
             with st.spinner(_t(language, "generating")):
                 payload_es = build_roadmap(
@@ -1599,14 +1740,20 @@ def main() -> None:
                     "email_status": email_status,
                     "language": language,
                 }
+                st.session_state["scroll_to_top_result"] = True
+                st.session_state["scroll_to_top_nonce"] = int(st.session_state.get("scroll_to_top_nonce", 0)) + 1
 
         except Exception as exc:
             st.error(f"{_t(language, 'roadmap_error')}: {exc}")
+        finally:
+            overlay_slot.empty()
 
     if "ui_last_result" in st.session_state:
+        st.markdown('<div id="rogen-result-anchor"></div>', unsafe_allow_html=True)
         current_lang = _lang(str(st.session_state["ui_last_result"].get("language", language)))
         _render_last_result_summary(st.session_state["ui_last_result"], current_lang)
         _render_downloads(st.session_state["ui_last_result"], current_lang)
+        _scroll_to_result_once()
 
 
 if __name__ == "__main__":
