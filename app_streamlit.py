@@ -504,6 +504,13 @@ def _render_styles() -> None:
   border-bottom: 1px solid rgba(25, 83, 56, 0.55);
 }
 
+/* Oculta acciones de cabecera de Streamlit Cloud (Fork / GitHub / menú de tres puntos). */
+[data-testid="stHeader"] [data-testid="stToolbar"],
+[data-testid="stHeader"] [data-testid="stHeaderActionElements"],
+[data-testid="stHeader"] [data-testid="stAppViewToolbar"] {
+  display: none !important;
+}
+
 [data-testid="stHeader"] [data-testid="collapsedControl"],
 [data-testid="stHeader"] [data-testid="stToolbar"] {
   color: #f7f3e8 !important;
