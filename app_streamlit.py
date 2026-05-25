@@ -50,7 +50,6 @@ RUT_WIDGET_KEY = "company_rut_input"
 FLAGS_DIR = ROOT / "assets" / "localization" / "flags"
 FLAG_ES_PATH = FLAGS_DIR / "es_flag.png"
 FLAG_EN_PATH = FLAGS_DIR / "en_flag.png"
-INTRO_IMAGE_PATH = ROOT / "assets" / "ui" / "intro_agriculture_photo.png"
 
 UI_TEXTS = {
     "es": {
@@ -723,72 +722,9 @@ h1, h2, h3 {
   border-radius: 0;
   box-shadow: none;
   padding: 0;
-  margin-top: 0;
-  margin-bottom: 0;
-}
-
-.app-intro-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.65fr) minmax(220px, 1fr);
-  gap: clamp(0.9rem, 2vw, 1.45rem);
-  align-items: start;
   margin-top: 0.62rem;
   margin-bottom: 0.92rem;
-}
-
-.app-intro-image-panel {
-  margin: 0;
-  width: 100%;
-  max-width: 360px;
-  justify-self: end;
-  background: linear-gradient(145deg, rgba(219, 229, 214, 0.70) 0%, rgba(232, 237, 225, 0.86) 52%, rgba(222, 232, 216, 0.76) 100%);
-  border: 1px solid rgba(96, 145, 102, 0.34);
-  border-radius: 22px;
-  padding: 0.86rem;
-  box-shadow: 0 10px 22px rgba(37, 58, 43, 0.11);
-}
-
-.app-intro-image-wrap {
-  position: relative;
-  width: 100%;
-  max-width: 100%;
-  border-radius: 18px;
-  overflow: hidden;
-  border: 1px solid rgba(250, 250, 246, 0.95);
-  box-shadow: 0 8px 18px rgba(29, 44, 33, 0.16);
-}
-
-.app-intro-image {
-  display: block;
-  width: 100%;
-  height: auto;
-  object-fit: cover;
-  vertical-align: middle;
-}
-
-.app-intro-image-overlay {
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(
-      90deg,
-      rgba(233, 231, 220, 0.97) 0%,
-      rgba(233, 231, 220, 0.90) 14%,
-      rgba(233, 231, 220, 0.75) 26%,
-      rgba(233, 231, 220, 0.50) 36%,
-      rgba(233, 231, 220, 0.24) 47%,
-      rgba(233, 231, 220, 0.08) 57%,
-      rgba(233, 231, 220, 0.00) 67%
-    ),
-    linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.06) 0%,
-      rgba(255, 255, 255, 0.00) 46%,
-      rgba(71, 55, 37, 0.09) 100%
-    );
-  filter: blur(1.6px);
-  transform: scale(1.035);
-  pointer-events: none;
+  max-width: 860px;
 }
 
 .app-intro-title {
@@ -937,19 +873,6 @@ h1, h2, h3 {
     margin-bottom: 0.43rem;
   }
 
-  .app-intro-layout {
-    grid-template-columns: 1fr;
-    gap: 0.75rem;
-  }
-
-  .app-intro-image-wrap {
-    max-width: 100%;
-  }
-
-  .app-intro-image-panel {
-    max-width: 320px;
-  }
-
   .app-warn-meta,
   .app-status-text {
     font-size: 0.86rem;
@@ -1011,20 +934,6 @@ h1, h2, h3 {
     margin-bottom: 0.34rem;
   }
 
-  .app-intro-image-panel {
-    justify-self: start;
-  }
-
-  .app-intro-image-wrap {
-    max-width: 100%;
-    border-radius: 14px;
-  }
-
-  .app-intro-image-panel {
-    max-width: 260px;
-    padding: 0.62rem;
-    border-radius: 16px;
-  }
 }
 
 .app-title {
@@ -1604,29 +1513,12 @@ def _render_intro_block(language: str) -> None:
     title = html.escape(_t(language, "intro_title"))
     paragraph_1 = html.escape(_t(language, "intro_p1"))
     paragraph_2 = html.escape(_t(language, "intro_p2"))
-    image_data_url = _img_data_url(str(INTRO_IMAGE_PATH))
-    image_alt = html.escape(
-        "Ilustración agrícola generada para RoGen" if language == "es" else "Agricultural illustration generated for RoGen"
-    )
-    image_html = ""
-    if image_data_url:
-        image_html = f"""
-  <aside class="app-intro-image-panel" aria-hidden="true">
-    <div class="app-intro-image-wrap">
-      <img class="app-intro-image" src="{image_data_url}" alt="{image_alt}" loading="lazy" />
-      <span class="app-intro-image-overlay"></span>
-    </div>
-  </aside>
-        """
     st.markdown(
         f"""
-<section class="app-intro-layout" aria-label="{title}">
-  <div class="app-intro app-intro--academic">
-    <div class="app-intro-title">{title}</div>
-    <p>{paragraph_1}</p>
-    <p>{paragraph_2}</p>
-  </div>
-  {image_html}
+<section class="app-intro app-intro--academic" aria-label="{title}">
+  <div class="app-intro-title">{title}</div>
+  <p>{paragraph_1}</p>
+  <p>{paragraph_2}</p>
 </section>
         """,
         unsafe_allow_html=True,
