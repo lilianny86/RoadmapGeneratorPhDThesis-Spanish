@@ -96,7 +96,7 @@ UI_TEXTS = {
         "roadmap_error": "No se pudo generar el roadmap",
         "language_button": "English",
         "title_company_default": "Empresa",
-        "main_title": "Generador de Roadmap Personalizado | Captura de Datos",
+        "main_title": "RoGen | Generador de Roadmap Personalizado",
         "missing_company_type": "Tipo de empresa",
         "missing_company_name": "Nombre empresa",
         "missing_rut": "RUT",
@@ -159,7 +159,7 @@ UI_TEXTS = {
         "roadmap_error": "The roadmap could not be generated",
         "language_button": "Español",
         "title_company_default": "Company",
-        "main_title": "Customized Roadmap Generator | Company Data Capture",
+        "main_title": "RoGen | Customized Roadmap Generator",
         "missing_company_type": "Company type",
         "missing_company_name": "Company name",
         "missing_rut": "RUT",
@@ -504,11 +504,32 @@ def _render_styles() -> None:
   border-bottom: 1px solid rgba(25, 83, 56, 0.55);
 }
 
-/* Oculta acciones de cabecera de Streamlit Cloud (Fork / GitHub / menú de tres puntos). */
-[data-testid="stHeader"] [data-testid="stToolbar"],
-[data-testid="stHeader"] [data-testid="stHeaderActionElements"],
-[data-testid="stHeader"] [data-testid="stAppViewToolbar"] {
+/* Oculta acciones de cabecera de Streamlit Cloud (Fork / GitHub / menú de tres puntos)
+   sin afectar el botón de restaurar/contraer barra lateral. */
+[data-testid="stHeader"] button[aria-label*="Fork"],
+[data-testid="stHeader"] button[title*="Fork"],
+[data-testid="stHeader"] a[aria-label*="Fork"],
+[data-testid="stHeader"] a[title*="Fork"],
+[data-testid="stHeader"] button[aria-label*="GitHub"],
+[data-testid="stHeader"] button[title*="GitHub"],
+[data-testid="stHeader"] a[aria-label*="GitHub"],
+[data-testid="stHeader"] a[title*="GitHub"],
+[data-testid="stHeader"] button[aria-label*="More"],
+[data-testid="stHeader"] button[title*="More"],
+[data-testid="stHeader"] button[aria-label*="más"],
+[data-testid="stHeader"] button[title*="más"],
+[data-testid="stHeader"] button[aria-label*="menu"],
+[data-testid="stHeader"] button[title*="menu"],
+[data-testid="stHeader"] button[aria-label*="menú"],
+[data-testid="stHeader"] button[title*="menú"] {
   display: none !important;
+}
+
+[data-testid="stHeader"] [data-testid="collapsedControl"],
+[data-testid="stSidebarCollapsedControl"] {
+  display: flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
 }
 
 [data-testid="stHeader"] [data-testid="collapsedControl"],
@@ -661,6 +682,13 @@ h1, h2, h3 {
   font-family: "Bitter", serif;
   letter-spacing: 0.2px;
   color: var(--agri-leaf-900);
+}
+
+/* Oculta el icono/enlace de ancla que Streamlit agrega a los títulos. */
+[data-testid="stHeadingWithActionElements"] a,
+[data-testid="stHeading"] a {
+  display: none !important;
+  visibility: hidden !important;
 }
 
 .app-card {
@@ -1574,7 +1602,6 @@ def main() -> None:
             st.title(f"{_t(language, 'main_title')} {selected_company_type}")
 
     if company_type == "__select__":
-        st.markdown(f"<div class='app-tip'>{html.escape(_t(language, 'select_company_type'))}</div>", unsafe_allow_html=True)
         _render_intro_block(language)
         return
 
