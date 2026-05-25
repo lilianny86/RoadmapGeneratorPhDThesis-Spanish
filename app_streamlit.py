@@ -88,6 +88,9 @@ UI_TEXTS = {
         "email_not_sent": "No enviado",
         "download_es": "Descargar Roadmap PDF (ES)",
         "download_en": "Descargar Roadmap PDF (EN)",
+        "intro_style_label": "Estilo del texto introductorio",
+        "intro_style_academic": "Académico clásico",
+        "intro_style_institutional": "Institucional moderno",
         "select_company_type": "Seleccione el tipo de empresa en el panel de la izquierda para continuar.",
         "intro_title": "¿Qué es RoGen y cómo comenzar?",
         "intro_p1": "RoGen genera automáticamente una hoja de ruta personalizada para PyMEs agrícolas a partir del perfil de la empresa y las respuestas del cuestionario. Convierte los hallazgos del diagnóstico en acciones priorizadas según impacto, urgencia y horizonte temporal. La aplicación progresiva de esta ruta favorece mejoras medibles en productividad, trazabilidad, gestión de recursos, cumplimiento normativo y capacidades de digitalización.",
@@ -151,6 +154,9 @@ UI_TEXTS = {
         "email_not_sent": "Not sent",
         "download_es": "Download PDF Roadmap (ES)",
         "download_en": "Download PDF Roadmap (EN)",
+        "intro_style_label": "Intro text style",
+        "intro_style_academic": "Academic classic",
+        "intro_style_institutional": "Institutional modern",
         "select_company_type": "Select a company type to continue.",
         "intro_title": "What is RoGen and how do I get started?",
         "intro_p1": "RoGen is an automated generator of customized roadmaps that uses company characteristics and questionnaire responses as input. RoGen converts diagnostic results into a structured roadmap tailored for agricultural small and medium-sized enterprises (SMEs). The assessment process identifies maturity gaps and organizes solutions according to priority, impact, and time horizon. Progressive implementation enables measurable improvements in productivity, traceability, resource management, regulatory compliance, and digital capabilities.",
@@ -207,6 +213,10 @@ def _target_level_help(company_type: str, language: str) -> str:
     if ctype == "medium":
         return _t(language, "target_level_help_medium")
     return ""
+
+
+def _normalize_intro_style(style: str) -> str:
+    return "institutional" if str(style).strip().lower() == "institutional" else "academic"
 
 
 @st.cache_data(show_spinner=False)
@@ -728,28 +738,54 @@ h1, h2, h3 {
 }
 
 .app-intro-title {
-  color: #1e3a2d;
-  font-family: "Bitter", serif;
-  font-size: 1.28rem;
-  font-weight: 700;
-  line-height: 1.28;
-  letter-spacing: 0.02em;
   margin: 0 0 0.42rem 0;
 }
 
 .app-intro p {
   margin: 0 0 0.52rem 0;
-  color: #2c4338;
-  font-family: "Source Sans 3", sans-serif;
-  font-size: 0.99rem;
-  font-weight: 400;
-  line-height: 1.58;
-  letter-spacing: 0.004em;
   text-align: left;
 }
 
 .app-intro p:last-child {
   margin-bottom: 0;
+}
+
+.app-intro--academic .app-intro-title {
+  color: #1f3a2e;
+  font-family: "Bitter", serif;
+  font-size: 1.22rem;
+  font-weight: 700;
+  line-height: 1.28;
+  letter-spacing: 0.012em;
+}
+
+.app-intro--academic p {
+  color: #2f4539;
+  font-family: "Source Sans 3", sans-serif;
+  font-size: 0.97rem;
+  font-weight: 400;
+  line-height: 1.58;
+  letter-spacing: 0.003em;
+}
+
+.app-intro--institutional .app-intro-title {
+  color: #203d30;
+  font-family: "Source Sans 3", sans-serif;
+  font-size: 1.09rem;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: 0.028em;
+  text-transform: uppercase;
+}
+
+.app-intro--institutional p {
+  color: #32483d;
+  font-family: "Source Sans 3", sans-serif;
+  font-size: 0.93rem;
+  font-weight: 500;
+  line-height: 1.56;
+  letter-spacing: 0.005em;
+  max-width: 78ch;
 }
 
 .app-warn {
@@ -855,16 +891,28 @@ h1, h2, h3 {
     line-height: 1.36;
   }
 
-  .app-intro-title {
-    font-size: 1.14rem;
-    line-height: 1.26;
-    margin-bottom: 0.36rem;
+  .app-intro--academic .app-intro-title {
+    font-size: 1.12rem;
+    line-height: 1.25;
+    margin-bottom: 0.34rem;
   }
 
-  .app-intro p {
-    font-size: 0.94rem;
+  .app-intro--academic p {
+    font-size: 0.93rem;
     line-height: 1.52;
-    margin-bottom: 0.46rem;
+    margin-bottom: 0.43rem;
+  }
+
+  .app-intro--institutional .app-intro-title {
+    font-size: 1.01rem;
+    line-height: 1.26;
+    margin-bottom: 0.32rem;
+  }
+
+  .app-intro--institutional p {
+    font-size: 0.9rem;
+    line-height: 1.5;
+    margin-bottom: 0.4rem;
   }
 
   .app-warn-meta,
@@ -916,16 +964,28 @@ h1, h2, h3 {
     border-radius: 9px;
   }
 
-  .app-intro-title {
-    font-size: 1.04rem;
+  .app-intro--academic .app-intro-title {
+    font-size: 1.01rem;
     line-height: 1.24;
-    margin-bottom: 0.3rem;
+    margin-bottom: 0.28rem;
   }
 
-  .app-intro p {
-    font-size: 0.88rem;
-    line-height: 1.46;
-    margin-bottom: 0.38rem;
+  .app-intro--academic p {
+    font-size: 0.86rem;
+    line-height: 1.44;
+    margin-bottom: 0.34rem;
+  }
+
+  .app-intro--institutional .app-intro-title {
+    font-size: 0.95rem;
+    line-height: 1.22;
+    margin-bottom: 0.26rem;
+  }
+
+  .app-intro--institutional p {
+    font-size: 0.84rem;
+    line-height: 1.42;
+    margin-bottom: 0.32rem;
   }
 }
 
@@ -1502,13 +1562,14 @@ def _render_last_result_summary(last: dict[str, object], language: str) -> None:
         )
 
 
-def _render_intro_block(language: str) -> None:
+def _render_intro_block(language: str, intro_style: str) -> None:
+    style_token = _normalize_intro_style(intro_style)
     title = html.escape(_t(language, "intro_title"))
     paragraph_1 = html.escape(_t(language, "intro_p1"))
     paragraph_2 = html.escape(_t(language, "intro_p2"))
     st.markdown(
         f"""
-<section class="app-intro" aria-label="{title}">
+<section class="app-intro app-intro--{style_token}" aria-label="{title}">
   <div class="app-intro-title">{title}</div>
   <p>{paragraph_1}</p>
   <p>{paragraph_2}</p>
@@ -1604,6 +1665,15 @@ def main() -> None:
         options=["__select__", "small", "medium"],
         format_func=lambda x: company_type_labels.get(x, x),
     )
+    intro_style_labels = {
+        "academic": _t(language, "intro_style_academic"),
+        "institutional": _t(language, "intro_style_institutional"),
+    }
+    intro_style = st.sidebar.selectbox(
+        _t(language, "intro_style_label"),
+        options=["academic", "institutional"],
+        format_func=lambda x: intro_style_labels.get(x, x),
+    )
     st.sidebar.markdown("---")
     with top_left:
         if company_type == "__select__":
@@ -1613,7 +1683,7 @@ def main() -> None:
             st.title(f"{_t(language, 'main_title')} {selected_company_type}")
 
     if company_type == "__select__":
-        _render_intro_block(language)
+        _render_intro_block(language, intro_style)
         return
 
     try:
