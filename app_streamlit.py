@@ -50,7 +50,7 @@ RUT_WIDGET_KEY = "company_rut_input"
 FLAGS_DIR = ROOT / "assets" / "localization" / "flags"
 FLAG_ES_PATH = FLAGS_DIR / "es_flag.png"
 FLAG_EN_PATH = FLAGS_DIR / "en_flag.png"
-INTRO_IMAGE_PATH = ROOT / "assets" / "ui" / "intro_agriculture_generated.png"
+INTRO_IMAGE_PATH = ROOT / "assets" / "ui" / "intro_agriculture_photo.png"
 
 UI_TEXTS = {
     "es": {
@@ -742,14 +742,30 @@ h1, h2, h3 {
   justify-self: end;
 }
 
+.app-intro-image-wrap {
+  position: relative;
+  width: 100%;
+  max-width: 340px;
+  border-radius: 20px;
+  overflow: hidden;
+  border: 1px solid rgba(47, 109, 60, 0.34);
+  box-shadow: 0 14px 28px rgba(35, 54, 40, 0.20);
+}
+
 .app-intro-image {
   display: block;
   width: 100%;
-  max-width: 340px;
-  border-radius: 18px;
-  border: 1px solid rgba(47, 109, 60, 0.34);
-  box-shadow: 0 14px 28px rgba(35, 54, 40, 0.20);
+  height: auto;
   object-fit: cover;
+  vertical-align: middle;
+}
+
+.app-intro-image-overlay {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(125deg, rgba(32, 88, 58, 0.14) 0%, rgba(49, 117, 77, 0.07) 44%, rgba(133, 93, 56, 0.16) 100%);
+  pointer-events: none;
 }
 
 .app-intro-title {
@@ -903,7 +919,7 @@ h1, h2, h3 {
     gap: 0.75rem;
   }
 
-  .app-intro-image {
+  .app-intro-image-wrap {
     max-width: 310px;
   }
 
@@ -972,7 +988,7 @@ h1, h2, h3 {
     justify-self: start;
   }
 
-  .app-intro-image {
+  .app-intro-image-wrap {
     max-width: 250px;
     border-radius: 14px;
   }
@@ -1563,7 +1579,10 @@ def _render_intro_block(language: str) -> None:
     if image_data_url:
         image_html = f"""
   <aside class="app-intro-image-panel" aria-hidden="true">
-    <img class="app-intro-image" src="{image_data_url}" alt="{image_alt}" loading="lazy" />
+    <div class="app-intro-image-wrap">
+      <img class="app-intro-image" src="{image_data_url}" alt="{image_alt}" loading="lazy" />
+      <span class="app-intro-image-overlay"></span>
+    </div>
   </aside>
         """
     st.markdown(
