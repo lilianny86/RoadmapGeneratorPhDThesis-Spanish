@@ -717,36 +717,34 @@ h1, h2, h3 {
 }
 
 .app-intro {
-  background:
-    linear-gradient(118deg, rgba(248, 244, 233, 0.92) 0%, rgba(232, 239, 226, 0.94) 58%, rgba(219, 233, 221, 0.90) 100%);
-  border: 1px solid rgba(53, 94, 59, 0.30);
-  border-left: 6px solid #355e3b;
-  border-radius: 12px;
-  box-shadow: 0 10px 22px rgba(47, 69, 50, 0.10);
-  padding: 1rem 1.06rem;
-  margin-top: 0.55rem;
-  margin-bottom: 0.95rem;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
+  margin-top: 0.72rem;
+  margin-bottom: 1.05rem;
+  max-width: 980px;
 }
 
 .app-intro-title {
-  color: #1f4f2f;
+  color: #173528;
   font-family: "Bitter", serif;
-  font-size: 1.15rem;
+  font-size: 2rem;
   font-weight: 800;
-  line-height: 1.25;
-  margin: 0 0 0.50rem 0;
+  line-height: 1.16;
+  letter-spacing: 0.1px;
+  margin: 0 0 0.72rem 0;
 }
 
 .app-intro p {
-  margin: 0 0 0.56rem 0;
-  color: #294436;
+  margin: 0 0 0.8rem 0;
+  color: #223b2e;
   font-family: "Source Sans 3", sans-serif;
-  font-size: 1rem;
-  font-weight: 600;
-  line-height: 1.46;
-  text-align: justify;
-  text-justify: inter-word;
-  hyphens: auto;
+  font-size: 1.3rem;
+  font-weight: 500;
+  line-height: 1.36;
+  text-align: left;
 }
 
 .app-intro p:last-child {
@@ -849,7 +847,6 @@ h1, h2, h3 {
   }
 
   .app-tip,
-  .app-intro,
   .app-warn,
   .app-status {
     font-size: 0.95rem;
@@ -858,13 +855,15 @@ h1, h2, h3 {
   }
 
   .app-intro-title {
-    font-size: 1.03rem;
-    margin-bottom: 0.42rem;
+    font-size: 1.66rem;
+    line-height: 1.14;
+    margin-bottom: 0.58rem;
   }
 
   .app-intro p {
-    font-size: 0.93rem;
-    line-height: 1.40;
+    font-size: 1.12rem;
+    line-height: 1.32;
+    margin-bottom: 0.62rem;
   }
 
   .app-warn-meta,
@@ -910,11 +909,22 @@ h1, h2, h3 {
   }
 
   .app-tip,
-  .app-intro,
   .app-warn,
   .app-status {
     border-left-width: 4px;
     border-radius: 9px;
+  }
+
+  .app-intro-title {
+    font-size: 1.38rem;
+    line-height: 1.14;
+    margin-bottom: 0.48rem;
+  }
+
+  .app-intro p {
+    font-size: 1.02rem;
+    line-height: 1.3;
+    margin-bottom: 0.56rem;
   }
 }
 
