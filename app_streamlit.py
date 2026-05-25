@@ -722,28 +722,29 @@ h1, h2, h3 {
   border-radius: 0;
   box-shadow: none;
   padding: 0;
-  margin-top: 0.72rem;
-  margin-bottom: 1.05rem;
-  max-width: 980px;
+  margin-top: 0.62rem;
+  margin-bottom: 0.92rem;
+  max-width: 860px;
 }
 
 .app-intro-title {
-  color: #173528;
+  color: #1e3a2d;
   font-family: "Bitter", serif;
-  font-size: 2rem;
-  font-weight: 800;
-  line-height: 1.16;
-  letter-spacing: 0.1px;
-  margin: 0 0 0.72rem 0;
+  font-size: 1.28rem;
+  font-weight: 700;
+  line-height: 1.28;
+  letter-spacing: 0.02em;
+  margin: 0 0 0.42rem 0;
 }
 
 .app-intro p {
-  margin: 0 0 0.8rem 0;
-  color: #223b2e;
+  margin: 0 0 0.52rem 0;
+  color: #2c4338;
   font-family: "Source Sans 3", sans-serif;
-  font-size: 1.3rem;
-  font-weight: 500;
-  line-height: 1.36;
+  font-size: 0.99rem;
+  font-weight: 400;
+  line-height: 1.58;
+  letter-spacing: 0.004em;
   text-align: left;
 }
 
@@ -855,15 +856,15 @@ h1, h2, h3 {
   }
 
   .app-intro-title {
-    font-size: 1.66rem;
-    line-height: 1.14;
-    margin-bottom: 0.58rem;
+    font-size: 1.14rem;
+    line-height: 1.26;
+    margin-bottom: 0.36rem;
   }
 
   .app-intro p {
-    font-size: 1.12rem;
-    line-height: 1.32;
-    margin-bottom: 0.62rem;
+    font-size: 0.94rem;
+    line-height: 1.52;
+    margin-bottom: 0.46rem;
   }
 
   .app-warn-meta,
@@ -916,15 +917,15 @@ h1, h2, h3 {
   }
 
   .app-intro-title {
-    font-size: 1.38rem;
-    line-height: 1.14;
-    margin-bottom: 0.48rem;
+    font-size: 1.04rem;
+    line-height: 1.24;
+    margin-bottom: 0.3rem;
   }
 
   .app-intro p {
-    font-size: 1.02rem;
-    line-height: 1.3;
-    margin-bottom: 0.56rem;
+    font-size: 0.88rem;
+    line-height: 1.46;
+    margin-bottom: 0.38rem;
   }
 }
 
