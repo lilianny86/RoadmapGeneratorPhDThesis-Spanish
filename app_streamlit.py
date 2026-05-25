@@ -50,6 +50,7 @@ RUT_WIDGET_KEY = "company_rut_input"
 FLAGS_DIR = ROOT / "assets" / "localization" / "flags"
 FLAG_ES_PATH = FLAGS_DIR / "es_flag.png"
 FLAG_EN_PATH = FLAGS_DIR / "en_flag.png"
+INTRO_IMAGE_PATH = ROOT / "assets" / "ui" / "intro_agriculture_generated.png"
 
 UI_TEXTS = {
     "es": {
@@ -88,9 +89,6 @@ UI_TEXTS = {
         "email_not_sent": "No enviado",
         "download_es": "Descargar Roadmap PDF (ES)",
         "download_en": "Descargar Roadmap PDF (EN)",
-        "intro_style_label": "Estilo del texto introductorio",
-        "intro_style_academic": "Académico clásico",
-        "intro_style_institutional": "Institucional moderno",
         "select_company_type": "Seleccione el tipo de empresa en el panel de la izquierda para continuar.",
         "intro_title": "¿Qué es RoGen y cómo comenzar?",
         "intro_p1": "RoGen genera automáticamente una hoja de ruta personalizada para PyMEs agrícolas a partir del perfil de la empresa y las respuestas del cuestionario. Convierte los hallazgos del diagnóstico en acciones priorizadas según impacto, urgencia y horizonte temporal. La aplicación progresiva de esta ruta favorece mejoras medibles en productividad, trazabilidad, gestión de recursos, cumplimiento normativo y capacidades de digitalización.",
@@ -154,9 +152,6 @@ UI_TEXTS = {
         "email_not_sent": "Not sent",
         "download_es": "Download PDF Roadmap (ES)",
         "download_en": "Download PDF Roadmap (EN)",
-        "intro_style_label": "Intro text style",
-        "intro_style_academic": "Academic classic",
-        "intro_style_institutional": "Institutional modern",
         "select_company_type": "Select a company type to continue.",
         "intro_title": "What is RoGen and how do I get started?",
         "intro_p1": "RoGen is an automated generator of customized roadmaps that uses company characteristics and questionnaire responses as input. RoGen converts diagnostic results into a structured roadmap tailored for agricultural small and medium-sized enterprises (SMEs). The assessment process identifies maturity gaps and organizes solutions according to priority, impact, and time horizon. Progressive implementation enables measurable improvements in productivity, traceability, resource management, regulatory compliance, and digital capabilities.",
@@ -213,10 +208,6 @@ def _target_level_help(company_type: str, language: str) -> str:
     if ctype == "medium":
         return _t(language, "target_level_help_medium")
     return ""
-
-
-def _normalize_intro_style(style: str) -> str:
-    return "institutional" if str(style).strip().lower() == "institutional" else "academic"
 
 
 @st.cache_data(show_spinner=False)
@@ -732,9 +723,33 @@ h1, h2, h3 {
   border-radius: 0;
   box-shadow: none;
   padding: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.app-intro-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(220px, 1fr);
+  gap: clamp(0.9rem, 2vw, 1.45rem);
+  align-items: start;
   margin-top: 0.62rem;
   margin-bottom: 0.92rem;
-  max-width: 860px;
+}
+
+.app-intro-image-panel {
+  margin: 0;
+  width: 100%;
+  justify-self: end;
+}
+
+.app-intro-image {
+  display: block;
+  width: 100%;
+  max-width: 340px;
+  border-radius: 18px;
+  border: 1px solid rgba(47, 109, 60, 0.34);
+  box-shadow: 0 14px 28px rgba(35, 54, 40, 0.20);
+  object-fit: cover;
 }
 
 .app-intro-title {
@@ -766,26 +781,6 @@ h1, h2, h3 {
   font-weight: 400;
   line-height: 1.58;
   letter-spacing: 0.003em;
-}
-
-.app-intro--institutional .app-intro-title {
-  color: #203d30;
-  font-family: "Source Sans 3", sans-serif;
-  font-size: 1.09rem;
-  font-weight: 700;
-  line-height: 1.3;
-  letter-spacing: 0.028em;
-  text-transform: uppercase;
-}
-
-.app-intro--institutional p {
-  color: #32483d;
-  font-family: "Source Sans 3", sans-serif;
-  font-size: 0.93rem;
-  font-weight: 500;
-  line-height: 1.56;
-  letter-spacing: 0.005em;
-  max-width: 78ch;
 }
 
 .app-warn {
@@ -903,16 +898,13 @@ h1, h2, h3 {
     margin-bottom: 0.43rem;
   }
 
-  .app-intro--institutional .app-intro-title {
-    font-size: 1.01rem;
-    line-height: 1.26;
-    margin-bottom: 0.32rem;
+  .app-intro-layout {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
   }
 
-  .app-intro--institutional p {
-    font-size: 0.9rem;
-    line-height: 1.5;
-    margin-bottom: 0.4rem;
+  .app-intro-image {
+    max-width: 310px;
   }
 
   .app-warn-meta,
@@ -976,16 +968,13 @@ h1, h2, h3 {
     margin-bottom: 0.34rem;
   }
 
-  .app-intro--institutional .app-intro-title {
-    font-size: 0.95rem;
-    line-height: 1.22;
-    margin-bottom: 0.26rem;
+  .app-intro-image-panel {
+    justify-self: start;
   }
 
-  .app-intro--institutional p {
-    font-size: 0.84rem;
-    line-height: 1.42;
-    margin-bottom: 0.32rem;
+  .app-intro-image {
+    max-width: 250px;
+    border-radius: 14px;
   }
 }
 
@@ -1562,17 +1551,30 @@ def _render_last_result_summary(last: dict[str, object], language: str) -> None:
         )
 
 
-def _render_intro_block(language: str, intro_style: str) -> None:
-    style_token = _normalize_intro_style(intro_style)
+def _render_intro_block(language: str) -> None:
     title = html.escape(_t(language, "intro_title"))
     paragraph_1 = html.escape(_t(language, "intro_p1"))
     paragraph_2 = html.escape(_t(language, "intro_p2"))
+    image_data_url = _img_data_url(str(INTRO_IMAGE_PATH))
+    image_alt = html.escape(
+        "Ilustración agrícola generada para RoGen" if language == "es" else "Agricultural illustration generated for RoGen"
+    )
+    image_html = ""
+    if image_data_url:
+        image_html = f"""
+  <aside class="app-intro-image-panel" aria-hidden="true">
+    <img class="app-intro-image" src="{image_data_url}" alt="{image_alt}" loading="lazy" />
+  </aside>
+        """
     st.markdown(
         f"""
-<section class="app-intro app-intro--{style_token}" aria-label="{title}">
-  <div class="app-intro-title">{title}</div>
-  <p>{paragraph_1}</p>
-  <p>{paragraph_2}</p>
+<section class="app-intro-layout" aria-label="{title}">
+  <div class="app-intro app-intro--academic">
+    <div class="app-intro-title">{title}</div>
+    <p>{paragraph_1}</p>
+    <p>{paragraph_2}</p>
+  </div>
+  {image_html}
 </section>
         """,
         unsafe_allow_html=True,
@@ -1665,15 +1667,6 @@ def main() -> None:
         options=["__select__", "small", "medium"],
         format_func=lambda x: company_type_labels.get(x, x),
     )
-    intro_style_labels = {
-        "academic": _t(language, "intro_style_academic"),
-        "institutional": _t(language, "intro_style_institutional"),
-    }
-    intro_style = st.sidebar.selectbox(
-        _t(language, "intro_style_label"),
-        options=["academic", "institutional"],
-        format_func=lambda x: intro_style_labels.get(x, x),
-    )
     st.sidebar.markdown("---")
     with top_left:
         if company_type == "__select__":
@@ -1683,7 +1676,7 @@ def main() -> None:
             st.title(f"{_t(language, 'main_title')} {selected_company_type}")
 
     if company_type == "__select__":
-        _render_intro_block(language, intro_style)
+        _render_intro_block(language)
         return
 
     try:
