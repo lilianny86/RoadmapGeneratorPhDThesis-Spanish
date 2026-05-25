@@ -119,7 +119,7 @@ UI_TEXTS = {
         "page_title": "Customized Roadmap Generator | Capture",
         "setup_header": "Initial Setup",
         "company_data_header": "Company Data",
-        "company_type": "Company type*",
+        "company_type": "Company size*",
         "company_type_select": "------Select------",
         "company_small": "Small-sized enterprise",
         "company_medium": "Medium-sized enterprise",
@@ -151,7 +151,7 @@ UI_TEXTS = {
         "email_not_sent": "Not sent",
         "download_es": "Download PDF Roadmap (ES)",
         "download_en": "Download PDF Roadmap (EN)",
-        "select_company_type": "Select a company type to continue.",
+        "select_company_type": "Select a company size to continue.",
         "intro_title": "What is RoGen and how do I get started?",
         "intro_p1": "RoGen is an automated generator of customized roadmaps that uses company characteristics and questionnaire responses as input. RoGen converts diagnostic results into a structured roadmap tailored for agricultural small and medium-sized enterprises (SMEs). The assessment process identifies maturity gaps and organizes solutions according to priority, impact, and time horizon. Progressive implementation enables measurable improvements in productivity, traceability, resource management, regulatory compliance, and digital capabilities.",
         "intro_p2": "To begin, open the left sidebar and select the company size category (Small company or Medium-sized company). Complete the required fields, choose the target level that represents the desired future state, and select the budget range that best reflects your company’s context. Respond to the questionnaire based on the current situation rather than the desired state. Based on this information, RoGen prioritizes feasible actions and generates a phased, implementable roadmap.",
@@ -160,7 +160,7 @@ UI_TEXTS = {
         "language_button": "Español",
         "title_company_default": "Company",
         "main_title": "RoGen | Customized Roadmap Generator",
-        "missing_company_type": "Company type",
+        "missing_company_type": "Company size",
         "missing_company_name": "Company name",
         "missing_rut": "RUT",
         "missing_valid_rut": "Valid RUT",
@@ -239,23 +239,60 @@ def _render_language_flag(language: str) -> None:
             st.session_state["ui_language"] = target
             st.rerun()
         return
-    st.markdown(
+    nonce = datetime.now().strftime("%Y%m%d%H%M%S%f")
+    components.html(
         f"""
-<div style="display:flex; justify-content:flex-end; align-items:center; margin-top:2.4rem;">
-  <form action="" method="get" style="margin:0; padding:0; display:inline-flex; align-items:center; gap:0.20rem;">
-    <input type="hidden" name="ui_lang" value="{target}" />
-    <button type="submit" title="{html.escape(target_label)}"
-      style="display:inline-flex; width:22px; height:14px; align-items:center; justify-content:center; border:1px solid rgba(31,79,47,0.35); border-radius:2px; overflow:hidden; box-shadow:0 2px 6px rgba(0,0,0,0.12); background:transparent; padding:0; margin:0; cursor:pointer;">
-      <img src="{data_url}" alt="{html.escape(target_label)}"
-           style="display:block; width:22px; height:14px; object-fit:cover;" />
-    </button>
-    <span class="lang-code-chip">
-      {target_code}
-    </span>
-  </form>
-</div>
+<script>
+(function () {{
+  try {{
+    const doc = window.parent && window.parent.document;
+    if (!doc) return;
+    const header = doc.querySelector('[data-testid="stHeader"]');
+    if (!header) return;
+
+    header.style.position = 'relative';
+
+    let host = header.querySelector('#rogen-header-lang-switch');
+    if (!host) {{
+      host = doc.createElement('div');
+      host.id = 'rogen-header-lang-switch';
+      header.appendChild(host);
+    }}
+
+    host.setAttribute('translate', 'no');
+    host.classList.add('notranslate');
+    host.style.position = 'absolute';
+    host.style.top = '0.56rem';
+    host.style.right = '0.86rem';
+    host.style.zIndex = '1300';
+    host.style.display = 'inline-flex';
+    host.style.alignItems = 'center';
+    host.style.gap = '0.20rem';
+
+    host.innerHTML = `
+      <a href="?ui_lang={target}" title="{html.escape(target_label)}" aria-label="{html.escape(target_label)}"
+         style="display:inline-flex;width:22px;height:14px;align-items:center;justify-content:center;border:1px solid rgba(31,79,47,0.35);border-radius:2px;overflow:hidden;box-shadow:0 2px 6px rgba(0,0,0,0.12);background:transparent;padding:0;margin:0;cursor:pointer;text-decoration:none;">
+        <img src="{data_url}" alt="{html.escape(target_label)}"
+             style="display:block;width:22px;height:14px;object-fit:cover;" />
+      </a>
+      <span class="lang-code-chip" style="font-size:0.64rem;">{target_code}</span>
+    `;
+
+    const isMobile = window.parent.matchMedia && window.parent.matchMedia('(max-width: 560px)').matches;
+    if (isMobile) {{
+      host.style.top = '0.62rem';
+      host.style.right = '0.68rem';
+    }}
+  }} catch (e) {{
+    console.warn('Language switch injection error:', e);
+  }}
+}})();
+</script>
+<div style="display:none" aria-hidden="true">{nonce}</div>
         """,
-        unsafe_allow_html=True,
+        height=0,
+        width=0,
+        scrolling=False,
     )
 
 
@@ -318,6 +355,30 @@ def _apply_no_translate_guard(language: str) -> None:
         el.classList.add("notranslate");
       }});
     }});
+
+    const hideHeaderActions = () => {{
+      const header = doc.querySelector('[data-testid="stHeader"]');
+      if (!header) return;
+      const nodes = header.querySelectorAll("a, button, [role='button'], div, span");
+      nodes.forEach((node) => {{
+        const text = (node.textContent || "").trim().toLowerCase();
+        const title = ((node.getAttribute("title") || "") + " " + (node.getAttribute("aria-label") || "")).toLowerCase();
+        const href = (node.getAttribute("href") || "").toLowerCase();
+        const isFork = text === "fork" || title.includes("fork");
+        const isGithub = text === "github" || title.includes("github") || href.includes("github.com");
+        if (isFork || isGithub) {{
+          const target = node.closest("a, button, [role='button'], div");
+          if (target && header.contains(target)) {{
+            target.style.display = "none";
+          }} else {{
+            node.style.display = "none";
+          }}
+        }}
+      }});
+    }};
+    hideHeaderActions();
+    setTimeout(hideHeaderActions, 40);
+    setTimeout(hideHeaderActions, 160);
 
     doc.querySelectorAll('input[aria-label^="RUT"], input[placeholder*="12.345.678-5"]').forEach((el) => {{
       el.setAttribute("translate", "no");
@@ -502,6 +563,55 @@ def _render_styles() -> None:
   background:
     linear-gradient(90deg, #2f6f46 0%, #3d7d4a 55%, #8a6744 100%) !important;
   border-bottom: 1px solid rgba(25, 83, 56, 0.55);
+}
+
+/* Oculta por completo el bloque de acciones Cloud (Fork/GitHub/menú). */
+[data-testid="stHeader"] [data-testid="stToolbar"] {
+  display: none !important;
+}
+
+.rogen-lang-switch {
+  position: fixed;
+  top: 0.56rem;
+  right: 0.86rem;
+  z-index: 1205;
+  display: inline-flex;
+  align-items: center;
+}
+
+.rogen-lang-form {
+  margin: 0;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.20rem;
+}
+
+.rogen-lang-button {
+  display: inline-flex;
+  width: 22px;
+  height: 14px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(31, 79, 47, 0.35);
+  border-radius: 2px;
+  overflow: hidden;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.rogen-lang-flag {
+  display: block;
+  width: 22px;
+  height: 14px;
+  object-fit: cover;
+}
+
+.rogen-lang-code {
+  font-size: 0.64rem !important;
 }
 
 /* Oculta acciones de cabecera de Streamlit Cloud (Fork / GitHub / menú de tres puntos)
@@ -883,6 +993,11 @@ h1, h2, h3 {
   h1 {
     font-size: 1.72rem !important;
     line-height: 1.16 !important;
+  }
+
+  .rogen-lang-switch {
+    top: 0.62rem;
+    right: 0.68rem;
   }
 
   .rogen-loading-card {
@@ -1595,10 +1710,7 @@ def main() -> None:
 
     language = _lang(str(st.session_state.get("ui_language", "es")))
     _apply_no_translate_guard(language)
-
-    top_left, top_right = st.columns([8, 2])
-    with top_right:
-        _render_language_flag(language)
+    _render_language_flag(language)
 
     st.sidebar.header(_t(language, "setup_header"))
     company_type_labels = {
@@ -1612,12 +1724,11 @@ def main() -> None:
         format_func=lambda x: company_type_labels.get(x, x),
     )
     st.sidebar.markdown("---")
-    with top_left:
-        if company_type == "__select__":
-            st.title(_t(language, "main_title"))
-        else:
-            selected_company_type = company_type_labels.get(company_type, "")
-            st.title(f"{_t(language, 'main_title')} {selected_company_type}")
+    if company_type == "__select__":
+        st.title(_t(language, "main_title"))
+    else:
+        selected_company_type = company_type_labels.get(company_type, "")
+        st.title(f"{_t(language, 'main_title')} {selected_company_type}")
 
     if company_type == "__select__":
         _render_intro_block(language)
