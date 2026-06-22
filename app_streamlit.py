@@ -44,7 +44,8 @@ BUDGET_LABELS_BY_LANG = {
 BUDGET_TO_CLP = {
     "up_to_1m": 1_000_000.0,
     "between_1m_5m": 4_999_999.0,
-    "from_5m": 5_000_000.0,
+    # "CLP 5,000,000 or more" is an open-ended range; None disables the upper budget cap.
+    "from_5m": None,
 }
 RUT_WIDGET_KEY = "company_rut_input"
 FLAGS_DIR = ROOT / "assets" / "localization" / "flags"
@@ -64,8 +65,8 @@ UI_TEXTS = {
         "company_name_placeholder": "Ingrese nombre empresa",
         "email": "Correo*",
         "target_level": "Nivel objetivo",
-        "target_level_help_small": "N1-Básico: operación principalmente manual y poco estandarizada.\nN2-Intermedio: procesos parcialmente definidos con adopción digital funcional.\nN3-Superior: procesos estandarizados, mayor integración y gestión basada en datos.",
-        "target_level_help_medium": "N1-Ad hoc: gestión reactiva, baja estandarización y escasa integración.\nN2-Básico: formalización inicial y control operativo básico.\nN3-Intermedio: coordinación entre áreas y seguimiento regular de KPI.\nN4-Superior: gestión integrada, mejora continua y alta trazabilidad.",
+        "target_level_help_small": "1: La gesti\u00f3n depende principalmente de tareas manuales, registros simples y baja estandarizaci\u00f3n.\n2: La empresa ya usa herramientas digitales en procesos clave, aunque todav\u00eda con integraci\u00f3n parcial.\n3: Los procesos est\u00e1n estandarizados, conectados y apoyados por datos para tomar mejores decisiones.",
+        "target_level_help_medium": "1: La gesti\u00f3n es reactiva, con baja estandarizaci\u00f3n, poca integraci\u00f3n y dependencia de esfuerzos individuales.\n2: Existen procesos iniciales de formalizaci\u00f3n, control operativo y uso digital en algunas \u00e1reas.\n3: Las \u00e1reas se coordinan mejor, se monitorean indicadores y se integran procesos relevantes.\n4: La gesti\u00f3n es integrada, trazable y orientada a mejora continua mediante tecnolog\u00eda y datos.",
         "improvement_budget": "Presupuesto para mejoras*",
         "required_note": "* Campos obligatorios",
         "invalid_rut": "RUT inválido. Verifica el dígito verificador.",
@@ -127,8 +128,8 @@ UI_TEXTS = {
         "company_name_placeholder": "Enter company name",
         "email": "Email*",
         "target_level": "Target level",
-        "target_level_help_small": "N1-Basic: mostly manual operations with limited standardization.\nN2-Intermediate: partially defined processes with functional digital adoption.\nN3-Advanced: standardized processes, stronger integration, and data-driven management.",
-        "target_level_help_medium": "N1-Ad hoc: reactive management, low standardization, and limited integration.\nN2-Basic: initial formalization and basic operational control.\nN3-Intermediate: cross-area coordination and regular KPI monitoring.\nN4-Advanced: integrated management, continuous improvement, and high traceability.",
+        "target_level_help_small": "1: Management relies mainly on manual tasks, simple records, and limited standardization.\n2: The company already uses digital tools in key processes, although integration is still partial.\n3: Processes are standardized, connected, and supported by data for better decision-making.",
+        "target_level_help_medium": "1: Management is reactive, with low standardization, limited integration, and dependence on individual efforts.\n2: Initial formalization, operational control, and digital use exist in some areas.\n3: Areas are better coordinated, indicators are monitored, and relevant processes are integrated.\n4: Management is integrated, traceable, and oriented toward continuous improvement through technology and data.",
         "improvement_budget": "Improvement budget*",
         "required_note": "* Required fields",
         "invalid_rut": "Invalid RUT. Please verify the check digit.",
@@ -230,69 +231,27 @@ def _img_data_url(path_str: str) -> str:
 def _render_language_flag(language: str) -> None:
     current = _lang(language)
     target = "en" if current == "es" else "es"
-    target_label = "English" if target == "en" else "Español"
+    target_label = "English" if target == "en" else "Espa\u00f1ol"
     target_code = "EN" if target == "en" else "ES"
     flag_path = FLAG_EN_PATH if current == "es" else FLAG_ES_PATH
     data_url = _img_data_url(str(flag_path))
     if not data_url:
         if st.button(target_label, key="lang_text_fallback", use_container_width=True):
             st.session_state["ui_language"] = target
+            st.query_params["ui_lang"] = target
             st.rerun()
         return
-    nonce = datetime.now().strftime("%Y%m%d%H%M%S%f")
-    components.html(
+
+    st.markdown(
         f"""
-<script>
-(function () {{
-  try {{
-    const doc = window.parent && window.parent.document;
-    if (!doc) return;
-    const header = doc.querySelector('[data-testid="stHeader"]');
-    if (!header) return;
-
-    header.style.position = 'relative';
-
-    let host = header.querySelector('#rogen-header-lang-switch');
-    if (!host) {{
-      host = doc.createElement('div');
-      host.id = 'rogen-header-lang-switch';
-      header.appendChild(host);
-    }}
-
-    host.setAttribute('translate', 'no');
-    host.classList.add('notranslate');
-    host.style.position = 'absolute';
-    host.style.top = '0.56rem';
-    host.style.right = '0.86rem';
-    host.style.zIndex = '1300';
-    host.style.display = 'inline-flex';
-    host.style.alignItems = 'center';
-    host.style.gap = '0.20rem';
-
-    host.innerHTML = `
-      <a href="?ui_lang={target}" title="{html.escape(target_label)}" aria-label="{html.escape(target_label)}"
-         style="display:inline-flex;width:22px;height:14px;align-items:center;justify-content:center;border:1px solid rgba(31,79,47,0.35);border-radius:2px;overflow:hidden;box-shadow:0 2px 6px rgba(0,0,0,0.12);background:transparent;padding:0;margin:0;cursor:pointer;text-decoration:none;">
-        <img src="{data_url}" alt="{html.escape(target_label)}"
-             style="display:block;width:22px;height:14px;object-fit:cover;" />
-      </a>
-      <span class="lang-code-chip" style="font-size:0.64rem;">{target_code}</span>
-    `;
-
-    const isMobile = window.parent.matchMedia && window.parent.matchMedia('(max-width: 560px)').matches;
-    if (isMobile) {{
-      host.style.top = '0.62rem';
-      host.style.right = '0.68rem';
-    }}
-  }} catch (e) {{
-    console.warn('Language switch injection error:', e);
-  }}
-}})();
-</script>
-<div style="display:none" aria-hidden="true">{nonce}</div>
+<div class="rogen-lang-switch notranslate" translate="no">
+  <a class="rogen-lang-link" href="?ui_lang={target}" target="_self" title="{html.escape(target_label)}" aria-label="{html.escape(target_label)}">
+    <img class="rogen-lang-flag" src="{data_url}" alt="{html.escape(target_label)}" />
+    <span class="rogen-lang-code">{target_code}</span>
+  </a>
+</div>
         """,
-        height=0,
-        width=0,
-        scrolling=False,
+        unsafe_allow_html=True,
     )
 
 
@@ -306,6 +265,83 @@ def _apply_no_translate_guard(language: str) -> None:
   try {{
     const doc = window.parent && window.parent.document;
     if (!doc) return;
+
+    // Remove stale language switch nodes injected by older versions in the Streamlit header.
+    doc.querySelectorAll('#rogen-header-lang-switch').forEach((el) => el.remove());
+
+    const clearSidebarState = () => {{
+      [window.parent.localStorage, window.parent.sessionStorage].forEach((store) => {{
+        if (!store) return;
+        try {{
+          for (let i = store.length - 1; i >= 0; i -= 1) {{
+            const key = store.key(i) || "";
+            const lower = key.toLowerCase();
+            if (lower.includes("sidebar") || lower.includes("collapsed")) {{
+              store.removeItem(key);
+            }}
+          }}
+        }} catch (e) {{}}
+      }});
+    }};
+
+    const setImportant = (el, prop, value) => {{
+      if (el && el.style) el.style.setProperty(prop, value, "important");
+    }};
+
+    const ensureSidebarExpanded = () => {{
+      const sidebar = doc.querySelector('[data-testid="stSidebar"]');
+      const collapsedButton = doc.querySelector('[data-testid="stSidebarCollapsedControl"] button, [data-testid="collapsedControl"] button, button[aria-label*="sidebar" i], button[title*="sidebar" i], button[aria-label*="barra" i], button[title*="barra" i]');
+      const rect = sidebar ? sidebar.getBoundingClientRect() : null;
+      const style = sidebar ? window.parent.getComputedStyle(sidebar) : null;
+      const hidden = !sidebar || !rect || rect.width < 96 || rect.right <= 96 || style.display === "none" || style.visibility === "hidden" || style.opacity === "0" || sidebar.getAttribute("aria-expanded") === "false";
+      if (hidden && collapsedButton) {{
+        const parent = collapsedButton.closest('[data-testid="stSidebarCollapsedControl"], [data-testid="collapsedControl"]') || collapsedButton;
+        setImportant(parent, "display", "flex");
+        setImportant(parent, "visibility", "visible");
+        setImportant(parent, "opacity", "1");
+        setImportant(parent, "pointer-events", "auto");
+        setImportant(parent, "z-index", "1000012");
+        setImportant(collapsedButton, "pointer-events", "auto");
+        collapsedButton.click();
+      }}
+    }};
+
+    const forceSidebarVisible = () => {{
+      clearSidebarState();
+      ensureSidebarExpanded();
+      const parentWindow = window.parent || window;
+      const sidebarWidth = parentWindow.matchMedia && parentWindow.matchMedia('(max-width: 760px)').matches ? '300px' : '340px';
+      const sidebar = doc.querySelector('[data-testid="stSidebar"]');
+      if (sidebar) {{
+        setImportant(sidebar, "display", "block");
+        setImportant(sidebar, "visibility", "visible");
+        setImportant(sidebar, "opacity", "1");
+        setImportant(sidebar, "flex", `0 0 ${{sidebarWidth}}`);
+        setImportant(sidebar, "width", sidebarWidth);
+        setImportant(sidebar, "min-width", sidebarWidth);
+        setImportant(sidebar, "max-width", sidebarWidth);
+        setImportant(sidebar, "box-sizing", "border-box");
+        setImportant(sidebar, "overflow-x", "hidden");
+        setImportant(sidebar, "transform", "translateX(0px)");
+        setImportant(sidebar, "pointer-events", "auto");
+        sidebar.querySelectorAll(':scope > div, [data-testid="stSidebarUserContent"]').forEach((el) => {{
+          setImportant(el, "visibility", "visible");
+          setImportant(el, "opacity", "1");
+          setImportant(el, "box-sizing", "border-box");
+          setImportant(el, "overflow-x", "hidden");
+          setImportant(el, "transform", "translateX(0px)");
+          setImportant(el, "width", "100%");
+          setImportant(el, "min-width", "0");
+          setImportant(el, "max-width", "100%");
+        }});
+      }}
+    }};
+    forceSidebarVisible();
+    setTimeout(forceSidebarVisible, 80);
+    setTimeout(forceSidebarVisible, 240);
+    setTimeout(forceSidebarVisible, 700);
+    setTimeout(forceSidebarVisible, 1400);
+    setTimeout(forceSidebarVisible, 2800);
 
     const html = doc.documentElement;
     const body = doc.body;
@@ -356,29 +392,52 @@ def _apply_no_translate_guard(language: str) -> None:
       }});
     }});
 
+
+
     const hideHeaderActions = () => {{
       const header = doc.querySelector('[data-testid="stHeader"]');
       if (!header) return;
+
+      const toolbar = header.querySelector('[data-testid="stToolbar"]');
+      if (toolbar) {{
+        toolbar.style.pointerEvents = 'none';
+        toolbar.style.zIndex = '1';
+      }}
+
       const nodes = header.querySelectorAll("a, button, [role='button'], div, span");
       nodes.forEach((node) => {{
         const text = (node.textContent || "").trim().toLowerCase();
         const title = ((node.getAttribute("title") || "") + " " + (node.getAttribute("aria-label") || "")).toLowerCase();
         const href = (node.getAttribute("href") || "").toLowerCase();
-        const isFork = text === "fork" || title.includes("fork");
-        const isGithub = text === "github" || title.includes("github") || href.includes("github.com");
-        if (isFork || isGithub) {{
-          const target = node.closest("a, button, [role='button'], div");
-          if (target && header.contains(target)) {{
-            target.style.display = "none";
-          }} else {{
-            node.style.display = "none";
-          }}
+        const signature = `${{text}} ${{title}} ${{href}}`;
+        const isSidebarControl = title.includes("sidebar") || title.includes("barra lateral") || node.closest('[data-testid="collapsedControl"]') || node.closest('[data-testid="stSidebarCollapsedControl"]');
+        const isLanguageSwitch = node.closest("#rogen-header-lang-switch") || node.getAttribute("data-rogen-lang-switch") === "1";
+        const isCloudAction = signature.includes("deploy") || signature.includes("fork") || signature.includes("github") || signature.includes("manage app") || signature.includes("share") || signature.includes("settings") || signature.includes("analytics") || signature.includes("reboot app") || signature.includes("delete app");
+        if (isLanguageSwitch) {{
+          node.style.display = "";
+          node.style.pointerEvents = "auto";
+          return;
+        }}
+        if (!isSidebarControl && isCloudAction) {{
+          const target = node.closest("a, button, [role='button']") || node;
+          target.style.display = "none";
+          target.style.visibility = "hidden";
+          target.style.pointerEvents = "none";
         }}
       }});
     }};
     hideHeaderActions();
     setTimeout(hideHeaderActions, 40);
     setTimeout(hideHeaderActions, 160);
+    setTimeout(hideHeaderActions, 500);
+    setTimeout(hideHeaderActions, 1200);
+
+    const headerForObserver = doc.querySelector('[data-testid="stHeader"]');
+    if (headerForObserver && !headerForObserver.dataset.rogenHeaderObserver) {{
+      headerForObserver.dataset.rogenHeaderObserver = "1";
+      const observer = new MutationObserver(() => hideHeaderActions());
+      observer.observe(headerForObserver, {{ childList: true, subtree: true, attributes: true }});
+    }}
 
     doc.querySelectorAll('input[aria-label^="RUT"], input[placeholder*="12.345.678-5"]').forEach((el) => {{
       el.setAttribute("translate", "no");
@@ -567,7 +626,23 @@ def _render_styles() -> None:
 
 /* Oculta por completo el bloque de acciones Cloud (Fork/GitHub/menú). */
 [data-testid="stHeader"] [data-testid="stToolbar"] {
-  display: none !important;
+  display: flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: none !important;
+  z-index: 1 !important;
+}
+
+[data-testid="stHeader"] [data-testid="stToolbar"] * {
+  pointer-events: none !important;
+}
+
+#rogen-header-lang-switch,
+#rogen-header-lang-switch *,
+#rogen-header-lang-switch [data-rogen-lang-switch="1"] {
+  pointer-events: auto !important;
+  visibility: visible !important;
+  opacity: 1 !important;
 }
 
 .rogen-lang-switch {
@@ -616,6 +691,10 @@ def _render_styles() -> None:
 
 /* Oculta acciones de cabecera de Streamlit Cloud (Fork / GitHub / menú de tres puntos)
    sin afectar el botón de restaurar/contraer barra lateral. */
+[data-testid="stHeader"] button[aria-label*="Deploy"],
+[data-testid="stHeader"] button[title*="Deploy"],
+[data-testid="stHeader"] a[aria-label*="Deploy"],
+[data-testid="stHeader"] a[title*="Deploy"],
 [data-testid="stHeader"] button[aria-label*="Fork"],
 [data-testid="stHeader"] button[title*="Fork"],
 [data-testid="stHeader"] a[aria-label*="Fork"],
@@ -640,6 +719,24 @@ def _render_styles() -> None:
   display: flex !important;
   visibility: visible !important;
   opacity: 1 !important;
+}
+
+[data-testid="stHeader"] [data-testid="collapsedControl"],
+[data-testid="stHeader"] [data-testid="stSidebarCollapsedControl"] {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  z-index: 1400 !important;
+  width: 44px !important;
+  height: 40px !important;
+  align-items: center !important;
+  justify-content: center !important;
+  pointer-events: auto !important;
+}
+
+[data-testid="stHeader"] [data-testid="collapsedControl"] *,
+[data-testid="stHeader"] [data-testid="stSidebarCollapsedControl"] * {
+  pointer-events: auto !important;
 }
 
 [data-testid="stHeader"] [data-testid="collapsedControl"],
@@ -785,7 +882,7 @@ def _render_styles() -> None:
 
 .block-container {
   padding-top: 2.0rem;
-  padding-bottom: 2.5rem;
+  padding-bottom: calc(7rem + env(safe-area-inset-bottom, 0px));
 }
 
 h1, h2, h3 {
@@ -843,7 +940,9 @@ h1, h2, h3 {
 
 .app-intro p {
   margin: 0 0 0.52rem 0;
-  text-align: left;
+  text-align: justify;
+  text-align-last: left;
+  hyphens: auto;
 }
 
 .app-intro p:last-child {
@@ -942,7 +1041,7 @@ h1, h2, h3 {
 @media (max-width: 900px) {
   .block-container {
     padding-top: 1.65rem;
-    padding-bottom: 2rem;
+    padding-bottom: calc(8.3rem + env(safe-area-inset-bottom, 0px));
   }
 
   h1 {
@@ -993,6 +1092,10 @@ h1, h2, h3 {
   h1 {
     font-size: 1.72rem !important;
     line-height: 1.16 !important;
+  }
+
+  .block-container {
+    padding-bottom: calc(9.2rem + env(safe-area-inset-bottom, 0px));
   }
 
   .rogen-lang-switch {
@@ -1047,6 +1150,13 @@ h1, h2, h3 {
     font-size: 0.86rem;
     line-height: 1.44;
     margin-bottom: 0.34rem;
+  }
+
+  .st-key-generate_action_bar {
+    bottom: calc(0.4rem + env(safe-area-inset-bottom, 0px));
+    padding-top: 0.42rem;
+    padding-bottom: 0.42rem;
+    margin-top: 0.6rem;
   }
 
 }
@@ -1164,6 +1274,23 @@ h1, h2, h3 {
   box-shadow: 0 14px 24px rgba(47, 79, 61, 0.24);
 }
 
+.st-key-generate_action_bar {
+  position: sticky;
+  bottom: calc(0.6rem + env(safe-area-inset-bottom, 0px));
+  z-index: 80;
+  padding-top: 0.5rem;
+  padding-bottom: 0.48rem;
+  margin-top: 0.72rem;
+  background: linear-gradient(180deg, rgba(248, 244, 233, 0.84) 0%, rgba(248, 244, 233, 0.97) 68%);
+  border-top: 1px solid rgba(111, 143, 78, 0.25);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+.st-key-generate_action_bar [data-testid="stButton"] > button {
+  margin-bottom: 0 !important;
+}
+
 [data-testid="stDownloadButton"] > button {
   border-radius: 10px;
   border: 1px solid rgba(122, 79, 44, 0.32);
@@ -1235,6 +1362,53 @@ h1, h2, h3 {
 
 [data-testid="stSlider"] div[data-baseweb="slider"] > div[data-testid="stTickBar"] {
   background: rgba(111, 143, 78, 0.28) !important;
+}
+
+[data-testid="stSidebar"]:has(.rogen-small-level-slider-marker) [data-testid="stSliderTickBar"] {
+  height: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  visibility: hidden !important;
+}
+
+[data-testid="stSidebar"]:has(.rogen-small-level-slider-marker) [data-testid="stSliderTickBar"] * {
+  color: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+}
+
+.rogen-small-level-slider-marker {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  width: 100% !important;
+  max-width: var(--rogen-sidebar-field-width) !important;
+  margin: -0.95rem auto 0.30rem auto !important;
+  padding: 0 !important;
+  overflow: visible !important;
+  color: #f7f3e8 !important;
+  -webkit-text-fill-color: #f7f3e8 !important;
+  font-family: "Source Sans 3", sans-serif !important;
+  font-size: 0.86rem !important;
+  font-weight: 700 !important;
+  line-height: 1.1 !important;
+}
+
+.rogen-small-level-slider-marker span {
+  display: inline-block !important;
+  min-width: 0.7rem !important;
+  color: #f7f3e8 !important;
+  -webkit-text-fill-color: #f7f3e8 !important;
+  text-align: center !important;
+}
+
+.rogen-small-level-slider-marker span:first-child {
+  text-align: left !important;
+}
+
+.rogen-small-level-slider-marker span:last-child {
+  text-align: right !important;
 }
 
 .question-label {
@@ -1311,6 +1485,209 @@ h1, h2, h3 {
   font-weight: 600;
   margin-top: 0.2rem;
 }
+
+/* Final header/sidebar policy: fixed sidebar, no native collapse/restore buttons. */
+[data-testid="stHeader"] [data-testid="stToolbar"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* Hide only the in-sidebar collapse button. Keep the restore control available as a fallback
+   in case Streamlit/browser state starts with the sidebar collapsed. */
+[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+[data-testid="stSidebar"],
+[data-testid="stSidebar"] > div {
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+[data-testid="stHeader"] [data-testid="collapsedControl"],
+[data-testid="stSidebarCollapsedControl"] {
+  display: flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+.rogen-lang-switch {
+  position: fixed !important;
+  top: 0.56rem !important;
+  right: 0.86rem !important;
+  z-index: 1000010 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  pointer-events: auto !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+.rogen-lang-link {
+  display: inline-flex !important;
+  width: auto !important;
+  height: 24px !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 0.18rem !important;
+  padding: 0 0.18rem !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 3px !important;
+  background: transparent !important;
+  text-decoration: none !important;
+  cursor: pointer !important;
+  pointer-events: auto !important;
+}
+
+.rogen-lang-link:hover {
+  background: rgba(25, 83, 56, 0.18) !important;
+}
+
+.rogen-lang-link .rogen-lang-flag {
+  width: 22px !important;
+  height: 14px !important;
+  object-fit: cover !important;
+  display: block !important;
+  border: 1px solid rgba(31, 79, 47, 0.28) !important;
+  border-radius: 2px !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12) !important;
+}
+
+.rogen-lang-link .rogen-lang-code {
+  color: #f7f3e8 !important;
+  -webkit-text-fill-color: #f7f3e8 !important;
+  font-family: "Source Sans 3", sans-serif !important;
+  font-size: 0.68rem !important;
+  font-weight: 800 !important;
+  line-height: 1 !important;
+}
+
+@media (max-width: 560px) {
+  .rogen-lang-switch {
+    top: 0.62rem !important;
+    right: 0.68rem !important;
+  }
+}
+
+
+/* Sidebar policy: keep the native Streamlit sidebar expanded and the fields centered. */
+:root {
+  --rogen-sidebar-width: 340px;
+  --rogen-sidebar-field-width: 300px;
+  --rogen-sidebar-pad-x: 20px;
+}
+
+[data-testid="stSidebar"] {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  box-sizing: border-box !important;
+  flex: 0 0 var(--rogen-sidebar-width) !important;
+  width: var(--rogen-sidebar-width) !important;
+  min-width: var(--rogen-sidebar-width) !important;
+  max-width: var(--rogen-sidebar-width) !important;
+  transform: translateX(0) !important;
+  pointer-events: auto !important;
+  overflow-x: hidden !important;
+}
+
+[data-testid="stSidebar"] > div {
+  visibility: visible !important;
+  opacity: 1 !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  transform: translateX(0) !important;
+  overflow-x: hidden !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
+  visibility: visible !important;
+  opacity: 1 !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  padding-left: var(--rogen-sidebar-pad-x) !important;
+  padding-right: var(--rogen-sidebar-pad-x) !important;
+  transform: translateX(0) !important;
+  overflow-x: hidden !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stElementContainer"],
+[data-testid="stSidebar"] [data-testid="stTextInput"],
+[data-testid="stSidebar"] [data-testid="stSelectbox"],
+[data-testid="stSidebar"] [data-testid="stRadio"],
+[data-testid="stSidebar"] [data-testid="stSlider"],
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: var(--rogen-sidebar-field-width) !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stTextInput"] input,
+[data-testid="stSidebar"] [data-testid="stSelectbox"] div[data-baseweb="select"],
+[data-testid="stSidebar"] [data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+[data-testid="stSidebar"] [data-testid="stRadio"] > div,
+[data-testid="stSidebar"] [data-testid="stSlider"] > div {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] .sidebar-field-label,
+[data-testid="stSidebar"] .sidebar-required-note {
+  width: 100% !important;
+  max-width: var(--rogen-sidebar-field-width) !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+[data-testid="stSidebar"] hr {
+  width: 100% !important;
+  max-width: var(--rogen-sidebar-field-width) !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+/* Prevent users from hiding the sidebar once expanded. */
+[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* Keep the restore control available only as a fallback if a browser keeps a collapsed state. */
+[data-testid="stHeader"] [data-testid="collapsedControl"],
+[data-testid="stSidebarCollapsedControl"] {
+  display: flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  z-index: 1000012 !important;
+}
+
+@media (max-width: 760px) {
+  :root {
+    --rogen-sidebar-width: 300px;
+    --rogen-sidebar-field-width: 264px;
+    --rogen-sidebar-pad-x: 18px;
+  }
+}
+
 </style>
         """,
         unsafe_allow_html=True,
@@ -1353,6 +1730,8 @@ def _render_sidebar(profile: dict[str, object], max_level: int, language: str, c
         step=1,
         help=_target_level_help(company_type, language),
     )
+    if str(company_type).strip().lower() == "small":
+        st.sidebar.markdown('<div class="rogen-small-level-slider-marker" aria-hidden="true"><span>1</span><span>2</span><span>3</span></div>', unsafe_allow_html=True)
     budget_total_key = st.sidebar.radio(
         _t(language, "improvement_budget"),
         options=BUDGET_OPTIONS,
@@ -1390,8 +1769,9 @@ def _collect_answers(company_type: str, questions: list[dict[str, Any]]) -> dict
 
 
 def _build_overrides(ui_cfg: dict[str, object]) -> dict[str, Any]:
+    budget_total = ui_cfg.get("budget_total_clp")
     return {
-        "budget_total_clp": float(ui_cfg["budget_total_clp"]),
+        "budget_total_clp": float(budget_total) if budget_total is not None else None,
     }
 
 
@@ -1698,7 +2078,7 @@ def _show_generation_overlay(slot: st.delta_generator.DeltaGenerator, language: 
 
 
 def main() -> None:
-    st.set_page_config(page_title="Generador de Roadmap Personalizado / Customized Roadmap Generator", layout="wide")
+    st.set_page_config(page_title="Generador de Roadmap Personalizado / Customized Roadmap Generator", layout="wide", initial_sidebar_state="expanded")
     _render_styles()
 
     if "ui_language" not in st.session_state:
@@ -1801,7 +2181,11 @@ def main() -> None:
             label_visibility="collapsed",
         )
 
-    if st.button(_t(language, "generate"), type="primary", use_container_width=True):
+    generate_clicked = False
+    with st.container(key="generate_action_bar"):
+        generate_clicked = st.button(_t(language, "generate"), type="primary", use_container_width=True)
+
+    if generate_clicked:
         overlay_slot = st.empty()
         try:
             answers = _collect_answers(company_type, questions)

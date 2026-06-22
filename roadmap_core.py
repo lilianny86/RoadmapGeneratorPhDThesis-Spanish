@@ -372,7 +372,8 @@ def load_solutions(root: Path) -> tuple[list[dict[str, object]], dict[str, objec
                 "provider": val(r, "proveedor_programa_chileno_preferente", "proveedor", "provider"),
                 "provider_url": val(r, "url_proveedor_programa_chileno", "provider_url"),
                 "source": val(r, "fuente_contexto_territorial", "source", "fuente", "source_context"),
-                "source_url": val(r, "url_fuente_contexto_territorial", "url_fuente", "source_url"),
+                # Prioriza la URL de la solución específica (fuente) y deja contexto como respaldo.
+                "source_url": val(r, "url_fuente", "url_fuente_contexto_territorial", "source_url"),
                 "price_reference": val(r, "precio_referencial", "price_reference", "price"),
                 "price_clp_raw": val(r, "precio_referencial_clp", "precio_referencial", "price"),
                 "currency": val(r, "moneda", "currency"),

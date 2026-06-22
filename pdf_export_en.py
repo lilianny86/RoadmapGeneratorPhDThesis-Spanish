@@ -24,6 +24,7 @@ PALETTE = {
     "danger": (0.78, 0.22, 0.20),
     "warning": (0.86, 0.67, 0.14),
     "success": (0.28, 0.58, 0.30),
+    "link": (0.12, 0.56, 0.96),
 }
 
 HORIZON_ORDER = ["Short term", "Medium term", "Long term", "Unclassified"]
@@ -146,7 +147,8 @@ def _brief(text: str, max_len: int = 110) -> str:
 
 def _solution_urls(row: dict[str, object], *, max_urls: int = 1) -> list[str]:
     raw_values: list[str] = []
-    for field in ("provider_url", "source_url"):
+    # Prioritize the specific solution URL (source_url) over provider/context links.
+    for field in ("source_url", "provider_url"):
         raw = str(row.get(field, "") or "").strip()
         if not raw:
             continue
@@ -159,7 +161,8 @@ def _solution_urls(row: dict[str, object], *, max_urls: int = 1) -> list[str]:
         parts = urlsplit(url)
         if not parts.scheme or not parts.netloc:
             continue
-        clean = urlunsplit((parts.scheme, parts.netloc, "", "", ""))
+        # Keep path and query to preserve the exact solution URL.
+        clean = urlunsplit((parts.scheme, parts.netloc, parts.path, parts.query, ""))
         key = clean.lower()
         if key in seen:
             continue
@@ -438,7 +441,7 @@ class SimplePdf:
             return
         line_height = size * 1.40
         usable_width = self.page_width - (2 * self.margin) - indent
-        max_chars = int(usable_width / (size * 0.53)) if usable_width > 0 else 30
+        max_width = usable_width if usable_width > 0 else 120.0
         paragraphs = str(text).splitlines() or [str(text)]
         for para in paragraphs:
             clean = self._latin1(para)
@@ -446,7 +449,7 @@ class SimplePdf:
                 self._ensure_space(line_height * 0.7)
                 self.current_y -= line_height * 0.7
                 continue
-            for line in self._wrap(clean, max_chars):
+            for line in self._wrap_by_width(clean, max_width=max_width, size=size, bold=bold):
                 self._ensure_space(line_height)
                 x = self.margin + indent
                 y = self.current_y
@@ -843,7 +846,7 @@ def _estimate_text_block_height(
     if text is None:
         return max(gap_after, 0.0)
     usable_width = doc.page_width - (2 * doc.margin) - indent
-    max_chars = int(usable_width / (size * 0.53)) if usable_width > 0 else 30
+    max_width = usable_width if usable_width > 0 else 120.0
     paragraphs = str(text).splitlines() or [str(text)]
     total = 0.0
     for para in paragraphs:
@@ -851,8 +854,130 @@ def _estimate_text_block_height(
         if not clean:
             total += line_height * 0.7
             continue
-        total += len(doc._wrap(clean, max_chars)) * line_height
+        total += len(doc._wrap_by_width(clean, max_width=max_width, size=size, bold=False)) * line_height
     return total + max(gap_after, 0.0)
+
+
+def _wrap_url_lines(
+    doc: SimplePdf,
+    url: str,
+    *,
+    max_width: float,
+    size: float,
+) -> list[str]:
+    clean = doc._latin1(url)
+    if not clean:
+        return [""]
+    tokens = [tok for tok in re.split(r"([/:?&=#._%-])", clean) if tok != ""]
+    lines: list[str] = []
+    current = ""
+    for tok in tokens:
+        candidate = f"{current}{tok}"
+        if doc._approx_text_width(candidate, size=size, bold=False) <= max_width:
+            current = candidate
+            continue
+        if current:
+            lines.append(current)
+            current = tok
+        else:
+            current = tok
+        while current and doc._approx_text_width(current, size=size, bold=False) > max_width:
+            piece = ""
+            for ch in current:
+                probe = piece + ch
+                if doc._approx_text_width(probe, size=size, bold=False) <= max_width or not piece:
+                    piece = probe
+                else:
+                    break
+            if not piece:
+                break
+            lines.append(piece)
+            current = current[len(piece) :]
+    if current:
+        lines.append(current)
+    return lines if lines else [clean]
+
+
+def _estimate_labeled_url_height(
+    doc: SimplePdf,
+    *,
+    label: str,
+    url: str | None,
+    size: float,
+    indent: float = 0.0,
+    gap_after: float = 0.0,
+) -> float:
+    if not url:
+        return 0.0
+    line_height = size * 1.40
+    usable_width = doc.page_width - (2 * doc.margin) - indent
+    if usable_width <= 0:
+        return line_height + max(gap_after, 0.0)
+    label_width = doc._approx_text_width(doc._latin1(label), size=size, bold=False)
+    first_line_width = max(usable_width - label_width - (size * 0.45), size * 2.0)
+    first_line_chunks = _wrap_url_lines(doc, str(url), max_width=first_line_width, size=size)
+    extra_lines = 0
+    if len(first_line_chunks) > 1:
+        extra_lines += len(first_line_chunks) - 1
+        for frag in first_line_chunks[1:]:
+            extra_lines += max(len(_wrap_url_lines(doc, frag, max_width=usable_width, size=size)) - 1, 0)
+    total_lines = 1 + max(extra_lines, 0)
+    return (total_lines * line_height) + max(gap_after, 0.0)
+
+
+def _add_labeled_url(
+    doc: SimplePdf,
+    *,
+    label: str,
+    url: str | None,
+    size: float,
+    indent: float = 0.0,
+    label_color: tuple[float, float, float] = PALETTE["slate"],
+    link_color: tuple[float, float, float] = PALETTE["link"],
+    gap_after: float = 0.0,
+) -> None:
+    if not url:
+        return
+    line_height = size * 1.40
+    usable_width = doc.page_width - (2 * doc.margin) - indent
+    if usable_width <= 0:
+        return
+    label_clean = doc._latin1(label)
+    label_width = doc._approx_text_width(label_clean, size=size, bold=False)
+    first_line_width = max(usable_width - label_width - (size * 0.45), size * 2.0)
+    chunks = _wrap_url_lines(doc, str(url), max_width=first_line_width, size=size)
+    if not chunks:
+        chunks = [doc._latin1(str(url))]
+    first = chunks[0]
+    rest = chunks[1:]
+    expanded_rest: list[str] = []
+    for frag in rest:
+        expanded_rest.extend(_wrap_url_lines(doc, frag, max_width=usable_width, size=size))
+
+    doc._ensure_space(line_height)
+    x0 = doc.margin + indent
+    y0 = doc.current_y
+    doc.current_ops.append(doc._text_op(label_clean, x=x0, y=y0, size=size, bold=False, color=label_color))
+    doc.current_ops.append(
+        doc._text_op(
+            doc._latin1(first),
+            x=x0 + label_width + (size * 0.45),
+            y=y0,
+            size=size,
+            bold=False,
+            color=link_color,
+        )
+    )
+    doc.current_y -= line_height
+    for line in expanded_rest:
+        doc._ensure_space(line_height)
+        doc.current_ops.append(
+            doc._text_op(doc._latin1(line), x=x0, y=doc.current_y, size=size, bold=False, color=link_color)
+        )
+        doc.current_y -= line_height
+    if gap_after > 0:
+        doc._ensure_space(gap_after)
+        doc.current_y -= gap_after
 
 
 def _estimate_solution_item_height(
@@ -872,7 +997,7 @@ def _estimate_solution_item_height(
     total += _estimate_text_block_height(doc, title, size=title_size, indent=indent, gap_after=0.0)
     total += _estimate_text_block_height(doc, meta, size=meta_size, indent=indent, gap_after=0.0)
     if url:
-        total += _estimate_text_block_height(doc, url, size=url_size, indent=indent, gap_after=0.0)
+        total += _estimate_labeled_url_height(doc, label="URL:", url=url, size=url_size, indent=indent, gap_after=0.0)
     total += _estimate_text_block_height(doc, description, size=desc_size, indent=indent, gap_after=2.2)
     return total
 
@@ -940,7 +1065,7 @@ def _render_plan_bucket(
         item_title = f"{i}. {row.get('solution_name', '')}"
         item_meta = f"Focus KPI: {row.get('kpi', '')} | Stage: {_horizon_label(str(row.get('plazo', '')))} | Cost: {row.get('price', 'Not reported')}"
         urls = _solution_urls(row, max_urls=1)
-        item_url = f"URL: {urls[0]}" if urls else None
+        item_url = urls[0] if urls else None
         item_desc = f"Description: {_brief(str(row.get('solution_description', '')), 180) or 'Description not available.'}"
         item_h = _estimate_solution_item_height(
             doc,
@@ -973,11 +1098,14 @@ def _render_plan_bucket(
             gap_after=0.0,
         )
         if item_url:
-            doc.add_text(
-                item_url,
+            _add_labeled_url(
+                doc,
+                label="URL:",
+                url=item_url,
                 size=8.2,
                 indent=16,
-                color=PALETTE["slate"],
+                label_color=PALETTE["slate"],
+                link_color=PALETTE["link"],
                 gap_after=0.0,
             )
         doc.add_text(
@@ -1629,7 +1757,7 @@ def export_friendly_pdf(payload: dict[str, object], output_path: Path) -> None:
             item_title = f"{i}. {item.get('solution_name', '')}"
             item_meta = f"{_horizon_label(horizon)} | KPI: {item.get('kpi', '')} | Cost: {item.get('price', 'Not reported')}"
             urls = _solution_urls(item, max_urls=1)
-            item_url = f"URL: {urls[0]}" if urls else None
+            item_url = urls[0] if urls else None
             item_desc = f"Description: {_brief(str(item.get('solution_description', '')), 170) or 'Description not available.'}"
             item_h = _estimate_solution_item_height(
                 doc,
@@ -1663,11 +1791,14 @@ def export_friendly_pdf(payload: dict[str, object], output_path: Path) -> None:
                 gap_after=0.0,
             )
             if item_url:
-                doc.add_text(
-                    item_url,
+                _add_labeled_url(
+                    doc,
+                    label="URL:",
+                    url=item_url,
                     size=8.7,
                     indent=12,
-                    color=PALETTE["slate"],
+                    label_color=PALETTE["slate"],
+                    link_color=PALETTE["link"],
                     gap_after=0.0,
                 )
             doc.add_text(
