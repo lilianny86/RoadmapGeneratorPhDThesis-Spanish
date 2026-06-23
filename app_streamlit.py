@@ -51,6 +51,7 @@ RUT_WIDGET_KEY = "company_rut_input"
 FLAGS_DIR = ROOT / "assets" / "localization" / "flags"
 FLAG_ES_PATH = FLAGS_DIR / "es_flag.png"
 FLAG_EN_PATH = FLAGS_DIR / "en_flag.png"
+CATALOG_PATH = ROOT / "assets" / "roadmap" / "Catalogo_Soluciones_MM_Agro_Pymes_v3-Chile - revisado expertos INIA.xlsx"
 
 UI_TEXTS = {
     "es": {
@@ -518,8 +519,17 @@ def _on_rut_change() -> None:
     st.session_state[RUT_WIDGET_KEY] = _format_rut(str(st.session_state.get(RUT_WIDGET_KEY, "")))
 
 
+def _catalog_cache_version() -> str:
+    try:
+        stat = CATALOG_PATH.stat()
+    except OSError:
+        return "catalog-missing"
+    return f"{stat.st_mtime_ns}:{stat.st_size}"
+
+
 @st.cache_data(show_spinner=False)
-def _load_profile_cached(root: str, company_type: str, language: str) -> dict[str, object]:
+def _load_profile_cached(root: str, company_type: str, language: str, catalog_cache_version: str) -> dict[str, object]:
+    _ = catalog_cache_version  # Invalidate Streamlit cache when the catalog file changes.
     return load_profile_data(Path(root), company_type, language=_lang(language))
 
 
@@ -2115,7 +2125,7 @@ def main() -> None:
         return
 
     try:
-        profile = _load_profile_cached(str(ROOT), company_type, language)
+        profile = _load_profile_cached(str(ROOT), company_type, language, _catalog_cache_version())
     except Exception as exc:
         st.error(f"{_t(language, 'cannot_load_profile')} '{company_type}': {exc}")
         return

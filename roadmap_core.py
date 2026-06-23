@@ -323,7 +323,7 @@ def load_profile_data(root: Path, profile: str, language: str = "es") -> dict[st
 
 
 def load_solutions(root: Path) -> tuple[list[dict[str, object]], dict[str, object]]:
-    xlsx = root / "assets" / "roadmap" / "Catalogo_Soluciones_MM_Agro_Pymes_v2-Chile.xlsx"
+    xlsx = root / "assets" / "roadmap" / "Catalogo_Soluciones_MM_Agro_Pymes_v3-Chile - revisado expertos INIA.xlsx"
     sheets = read_xlsx(xlsx)
     sheet_name = "Catalogo_Soluciones" if "Catalogo_Soluciones" in sheets else next(iter(sheets.keys()))
     rows = sheets[sheet_name]

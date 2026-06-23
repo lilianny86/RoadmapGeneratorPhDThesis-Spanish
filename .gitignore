@@ -9,3 +9,5 @@ outputs/
 __pycache__/
 *.pyc
 .tmp_pyc/
+# Respaldos locales de catálogos Excel
+assets/roadmap/*_backup_*.xlsx

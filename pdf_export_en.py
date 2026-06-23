@@ -793,7 +793,7 @@ def _render_budget_table(
         doc.current_y = y_bottom
 
     draw_row(
-        ["Stage", "Actions", "With cost", "No data", "Budget CLP"],
+        ["Stage", "Actions", "With value", "No data", "Budget CLP"],
         fill=PALETTE["forest_dark"],
         text_color=(1.0, 1.0, 1.0),
         bold=True,
@@ -1063,7 +1063,7 @@ def _render_plan_bucket(
         return
     for i, row in enumerate(items, start=1):
         item_title = f"{i}. {row.get('solution_name', '')}"
-        item_meta = f"Focus KPI: {row.get('kpi', '')} | Stage: {_horizon_label(str(row.get('plazo', '')))} | Cost: {row.get('price', 'Not reported')}"
+        item_meta = f"Focus KPI: {row.get('kpi', '')} | Stage: {_horizon_label(str(row.get('plazo', '')))} | Value: {row.get('price', 'Not reported')}"
         urls = _solution_urls(row, max_urls=1)
         item_url = urls[0] if urls else None
         item_desc = f"Description: {_brief(str(row.get('solution_description', '')), 180) or 'Description not available.'}"
@@ -1329,13 +1329,13 @@ def _append_backlog_page(doc: SimplePdf, entries: list[dict[str, object]], *, co
             kpi = str(row.get("kpi", "")).strip() or "Not reported"
             cost = str(row.get("price", "Not reported")).strip() or "Not reported"
             backlog_title = f"[ ] {idx}. {name}"
-            backlog_meta = f"Key area: {area} | KPI: {kpi} | Cost: {cost}"
+            backlog_meta = f"Key area: {area} | KPI: {kpi} | Value: {cost}"
             backlog_h = _estimate_text_block_height(doc, backlog_title, size=9.4, indent=8, gap_after=0.0)
             backlog_h += _estimate_text_block_height(doc, backlog_meta, size=8.2, indent=18, gap_after=1.0)
             doc._ensure_space(backlog_h + 2.0)
             doc.add_text(f"[ ] {idx}. {name}", size=9.4, bold=True, indent=8, color=PALETTE["forest_dark"], gap_after=0.0)
             doc.add_text(
-                f"Key area: {area} | KPI: {kpi} | Cost: {cost}",
+                f"Key area: {area} | KPI: {kpi} | Value: {cost}",
                 size=8.2,
                 indent=18,
                 color=PALETTE["slate"],
@@ -1551,7 +1551,7 @@ def _append_12_month_timeline_page(doc: SimplePdf, entries: list[dict[str, objec
                 gap_after=0.0,
             )
             doc.add_text(
-                f"KPI: {row.get('kpi', '')} | Cost: {row.get('price', 'Not reported')}",
+                f"KPI: {row.get('kpi', '')} | Value: {row.get('price', 'Not reported')}",
                 size=8.4,
                 indent=16,
                 color=PALETTE["slate"],
@@ -1706,7 +1706,7 @@ def export_technical_pdf(payload: dict[str, object], output_path: Path) -> None:
         entries,
         title="Estimated budget by stage",
         accent=PALETTE["forest_dark"],
-        note="Note: totals include only rows with interpretable CLP costs. Values in UF or without amount are reported as 'No data'.",
+        note="Note: totals include only rows with interpretable CLP values. Values in UF or without a reported amount are shown as 'No data'.",
     )
     _append_30_60_90_page(doc, entries, company_name=str(company.get("name", "Company")), friendly=False)
     _append_12_month_timeline_page(doc, entries, company_name=str(company.get("name", "Company")), friendly=False)
@@ -1744,7 +1744,7 @@ def export_friendly_pdf(payload: dict[str, object], output_path: Path) -> None:
         entries,
         title="Budget by stage",
         accent=PALETTE["olive"],
-        note="Tip: use this table to plan quarterly cash flow. If a row has no cost, estimate it before scheduling.",
+        note="Tip: use this table to plan quarterly cash flow. If a row has no reported value, estimate it before scheduling.",
     )
 
     doc.add_section_header("Quick Wins", accent=PALETTE["forest"])
@@ -1755,7 +1755,7 @@ def export_friendly_pdf(payload: dict[str, object], output_path: Path) -> None:
             horizon = str(item.get("plazo", ""))
             marker = _horizon_color(horizon)
             item_title = f"{i}. {item.get('solution_name', '')}"
-            item_meta = f"{_horizon_label(horizon)} | KPI: {item.get('kpi', '')} | Cost: {item.get('price', 'Not reported')}"
+            item_meta = f"{_horizon_label(horizon)} | KPI: {item.get('kpi', '')} | Value: {item.get('price', 'Not reported')}"
             urls = _solution_urls(item, max_urls=1)
             item_url = urls[0] if urls else None
             item_desc = f"Description: {_brief(str(item.get('solution_description', '')), 170) or 'Description not available.'}"
