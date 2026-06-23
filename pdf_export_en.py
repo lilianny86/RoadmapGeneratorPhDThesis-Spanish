@@ -78,6 +78,95 @@ def _norm(text: str) -> str:
     return re.sub(r"\s+", " ", normalized).strip().lower()
 
 
+
+
+_GENERIC_SOLUTION_NAMES_EN = {
+    "cnr law 18,450 irrigation technification grant call": "Application for irrigation technology financing",
+    "concurso cnr ley 18.450 para tecnificacion de riego": "Application for irrigation technology financing",
+    "inia la cruz program for pressurized irrigation with photovoltaic energy": "Pressurized irrigation with photovoltaic energy",
+    "programa inia la cruz de riego presurizado con energia fotovoltaica": "Pressurized irrigation with photovoltaic energy",
+    "orbit 1-inch solenoid valve at sodimac": "Basic automated irrigation sector control",
+    "valvula solenoide 1 pulgada orbit en sodimac": "Basic automated irrigation sector control",
+    "agrometeorologia inia para evapotranspiracion y programacion de riego": "Irrigation scheduling based on evapotranspiration and climate",
+    "orbit irrigation timer at sodimac": "Basic irrigation timer automation",
+    "temporizador de riego orbit en sodimac": "Basic irrigation timer automation",
+    "orbit pocket star controller at sodimac": "Basic automatic irrigation scheduling",
+    "programador orbit pocket star en sodimac": "Basic automatic irrigation scheduling",
+    "orbit b-hyve wifi controller at sodimac": "Remote and automated irrigation scheduling",
+    "programador orbit b-hyve wifi en sodimac": "Remote and automated irrigation scheduling",
+    "defontana entrepreneur": "Administrative and commercial digitalization with ERP",
+    "defontana emprendedor": "Administrative and commercial digitalization with ERP",
+    "defontana sme value": "Administrative and commercial integration for SMEs",
+    "defontana valor pyme": "Administrative and commercial integration for SMEs",
+    "defontana pos starter": "Digital recording of sales and daily production",
+    "defontana punto de venta inicio": "Digital recording of sales and daily production",
+    "nubox basic module 1.75 uf": "Basic accounting and administrative digitalization",
+    "nubox modulo basico 1,75 uf": "Basic accounting and administrative digitalization",
+    "nubox advanced plan 2.45 uf": "Advanced administrative and accounting management",
+    "nubox plan avanzado 2,45 uf": "Advanced administrative and accounting management",
+    "nubox plan 5.75 uf": "Higher-capacity integrated administrative management",
+    "nubox plan 5,75 uf": "Higher-capacity integrated administrative management",
+    "nubox plan 8.00 uf": "Advanced administrative and accounting management",
+    "nubox plan 8,00 uf": "Advanced administrative and accounting management",
+    "pvc pipe 25 mm x 3 m at sodimac": "Improvement of irrigation water conveyance and distribution",
+    "tuberia pvc 25 mm x 3 m en sodimac": "Improvement of irrigation water conveyance and distribution",
+    "pvc pipe 25 mm x 6 m at sodimac": "Improvement of irrigation water conveyance and distribution",
+    "tuberia pvc 25 mm x 6 m en sodimac": "Improvement of irrigation water conveyance and distribution",
+    "orbit valve with flow control at sodimac": "Sectorized irrigation flow control",
+    "valvula orbit con control de flujo en sodimac": "Sectorized irrigation flow control",
+    "agrometeorologia inia para seguimiento de rendimiento y clima": "Production performance monitoring with climate data",
+    "sag manuals and guidelines for food safety and good practices": "Implementation of good agricultural practices and food safety",
+    "manuales y pautas sag para inocuidad y buenas practicas": "Implementation of good agricultural practices and food safety",
+    "prochile virtual classroom": "Strengthening export capabilities",
+    "aula virtual prochile": "Strengthening export capabilities",
+    "prochile user portal": "Access to institutional tools for internationalization",
+    "portal del usuario prochile": "Access to institutional tools for internationalization",
+    "sence online courses": "Online digital and workforce training",
+    "cursos en linea sence": "Online digital and workforce training",
+    "sence digital society diploma programs": "Advanced training in digital competencies",
+    "diplomados sociedad digital sence": "Advanced training in digital competencies",
+    "fia innovation tours and events": "Connection with innovation networks and sector learning",
+    "fia giras y eventos de innovacion": "Connection with innovation networks and sector learning",
+    "indap investment development program": "Application for productive investment instruments",
+    "indap programa de desarrollo de inversiones": "Application for productive investment instruments",
+    "jumpseller basic": "Initial implementation of an online sales channel",
+    "jumpseller plus": "Professionalization of the online sales channel",
+    "jumpseller advanced": "E-commerce scaling",
+    "jumpseller premium": "Multichannel e-commerce consolidation",
+    "transbank payment link": "Digital payment enablement through payment links",
+    "transbank link de pago": "Digital payment enablement through payment links",
+    "mercado pago payment link": "Digital payment enablement through payment links",
+    "mercado pago link de pago": "Digital payment enablement through payment links",
+    "transbank entrepreneur pack": "In-person payment system implementation",
+    "transbank pack emprende": "In-person payment system implementation",
+    "mercado pago point smart 2": "Mobile point-of-sale implementation",
+    "transbank smart pos + payment link": "Integration of in-person and remote payments",
+    "transbank smart pos + link de pago": "Integration of in-person and remote payments",
+    "transbank webpay plus": "Web payment implementation for e-commerce",
+    "uc master's in agrifood business management": "Specialized training in agrifood management",
+    "magister en gestion de empresas agroalimentarias uc": "Specialized training in agrifood management",
+    "uc doctoral program in agricultural and natural sciences": "Advanced strengthening of research and innovation capabilities",
+    "doctorado en ciencias de la agricultura y la naturaleza uc": "Advanced strengthening of research and innovation capabilities",
+    "all in one lenovo at pc factory": "IT hardware renewal",
+    "all in one lenovo en pc factory": "IT hardware renewal",
+    "all in one hp i5 at pc factory": "IT hardware renewal",
+    "all in one hp i5 en pc factory": "IT hardware renewal",
+    "asesoria tecnica inia y soporte local especializado": "Formalization of specialized technical support",
+    "digital renewal in agriculture": "Digital literacy applied to agriculture",
+    "renacer digital en el agro": "Digital literacy applied to agriculture",
+    "sistema integrado de sensores y programacion de riego": "Integrated sensor-based irrigation scheduling",
+    "sistema integrado de sensores y analitica para planificacion productiva": "Sensor-based analytics for production planning",
+    "sistema integrado de sensores y analitica para seguimiento de rendimiento": "Sensor-based analytics for performance monitoring",
+}
+
+
+def _solution_display_name(row: dict[str, object], fallback: str = "Unnamed action") -> str:
+    raw = str(row.get("solution_name", "") or "").strip()
+    if not raw:
+        return fallback
+    return _GENERIC_SOLUTION_NAMES_EN.get(_norm(raw), raw)
+
+
 def _short(text: str, max_len: int = 170) -> str:
     if not text:
         return ""
@@ -1062,7 +1151,7 @@ def _render_plan_bucket(
         doc.add_text("No actions were identified for this time window.", size=9.2, color=PALETTE["muted"], indent=10)
         return
     for i, row in enumerate(items, start=1):
-        item_title = f"{i}. {row.get('solution_name', '')}"
+        item_title = f"{i}. {_solution_display_name(row)}"
         item_meta = f"Focus KPI: {row.get('kpi', '')} | Stage: {_horizon_label(str(row.get('plazo', '')))} | Value: {row.get('price', 'Not reported')}"
         urls = _solution_urls(row, max_urls=1)
         item_url = urls[0] if urls else None
@@ -1324,7 +1413,7 @@ def _append_backlog_page(doc: SimplePdf, entries: list[dict[str, object]], *, co
             doc.add_text("No pending actions for this stage.", size=8.9, color=PALETTE["muted"], indent=8)
             continue
         for idx, row in enumerate(stage_rows, start=1):
-            name = str(row.get("solution_name", "")).strip() or "Unnamed action"
+            name = _solution_display_name(row)
             area = str(row.get("domain", "")).strip() or "No key area"
             kpi = str(row.get("kpi", "")).strip() or "Not reported"
             cost = str(row.get("price", "Not reported")).strip() or "Not reported"
@@ -1543,7 +1632,7 @@ def _append_12_month_timeline_page(doc: SimplePdf, entries: list[dict[str, objec
             continue
         for i, row in enumerate(rows, start=1):
             doc.add_text(
-                f"Milestone {i}: {row.get('solution_name', '')}",
+                f"Milestone {i}: {_solution_display_name(row)}",
                 size=9.7,
                 bold=True,
                 indent=8,
@@ -1682,7 +1771,7 @@ def export_technical_pdf(payload: dict[str, object], output_path: Path) -> None:
         doc.add_text(_horizon_label(horizon), size=11.2, bold=True, color=_horizon_color(horizon), gap_after=2.0)
         rows = sorted(rows, key=lambda r: (-float(r.get("priority", 0)), _norm(str(r.get("solution_name", "")))))
         for idx, row in enumerate(rows, start=1):
-            doc.add_text(f"{idx}. {row.get('solution_name', '')}", size=10.0, bold=True, indent=8, gap_after=0.0)
+            doc.add_text(f"{idx}. {_solution_display_name(row)}", size=10.0, bold=True, indent=8, gap_after=0.0)
             doc.add_text(
                 f"KPI: {row.get('kpi', '')} | Priority: {float(row.get('priority', 0)):.2f} | Price: {row.get('price', 'Not reported')}",
                 size=8.8,
@@ -1754,7 +1843,7 @@ def export_friendly_pdf(payload: dict[str, object], output_path: Path) -> None:
         for i, item in enumerate(quick_wins, start=1):
             horizon = str(item.get("plazo", ""))
             marker = _horizon_color(horizon)
-            item_title = f"{i}. {item.get('solution_name', '')}"
+            item_title = f"{i}. {_solution_display_name(item)}"
             item_meta = f"{_horizon_label(horizon)} | KPI: {item.get('kpi', '')} | Value: {item.get('price', 'Not reported')}"
             urls = _solution_urls(item, max_urls=1)
             item_url = urls[0] if urls else None

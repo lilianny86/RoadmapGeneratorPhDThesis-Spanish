@@ -78,6 +78,61 @@ def _norm(text: str) -> str:
     return re.sub(r"\s+", " ", normalized).strip().lower()
 
 
+
+
+
+_GENERIC_SOLUTION_NAMES_ES = {
+    "concurso cnr ley 18.450 para tecnificacion de riego": "Postulación a financiamiento para tecnificación de riego",
+    "programa inia la cruz de riego presurizado con energia fotovoltaica": "Implementación de riego presurizado con energía fotovoltaica",
+    "valvula solenoide 1 pulgada orbit en sodimac": "Sectorización automatizada del riego",
+    "agrometeorologia inia para evapotranspiracion y programacion de riego": "Programación de riego basada en evapotranspiración y clima",
+    "temporizador de riego orbit en sodimac": "Automatización básica de horarios de riego",
+    "programador orbit pocket star en sodimac": "Programación automática básica del riego",
+    "programador orbit b-hyve wifi en sodimac": "Programación remota y automatizada del riego",
+    "defontana emprendedor": "Digitalización administrativa y comercial con ERP",
+    "defontana valor pyme": "Integración administrativa y comercial para PyMEs",
+    "defontana punto de venta inicio": "Registro digital de ventas y producción diaria",
+    "nubox modulo basico 1,75 uf": "Digitalización contable y administrativa básica",
+    "nubox plan avanzado 2,45 uf": "Gestión administrativa y contable avanzada",
+    "nubox plan 5,75 uf": "Gestión administrativa integrada de mayor capacidad",
+    "nubox plan 8,00 uf": "Gestión administrativa y contable avanzada",
+    "tuberia pvc 25 mm x 3 m en sodimac": "Mejora de conducción y distribución de agua de riego",
+    "tuberia pvc 25 mm x 6 m en sodimac": "Mejora de conducción y distribución de agua de riego",
+    "valvula orbit con control de flujo en sodimac": "Control sectorizado del flujo de riego",
+    "agrometeorologia inia para seguimiento de rendimiento y clima": "Seguimiento de rendimiento productivo con datos climáticos",
+    "manuales y pautas sag para inocuidad y buenas practicas": "Implementación de buenas prácticas e inocuidad agrícola",
+    "aula virtual prochile": "Fortalecimiento de habilidades exportadoras",
+    "portal del usuario prochile": "Acceso a herramientas institucionales para internacionalización",
+    "cursos en linea sence": "Capacitación digital y laboral en línea",
+    "diplomados sociedad digital sence": "Formación avanzada en competencias digitales",
+    "fia giras y eventos de innovacion": "Vinculación con redes de innovación y aprendizaje sectorial",
+    "indap programa de desarrollo de inversiones": "Postulación a instrumentos de inversión productiva",
+    "jumpseller basic": "Implementación inicial de canal de venta online",
+    "jumpseller plus": "Profesionalización del canal de venta online",
+    "jumpseller advanced": "Escalamiento del comercio electrónico",
+    "jumpseller premium": "Consolidación de comercio electrónico multicanal",
+    "transbank link de pago": "Habilitación de pagos digitales mediante enlaces",
+    "mercado pago link de pago": "Habilitación de pagos digitales mediante enlaces",
+    "transbank pack emprende": "Implementación de sistema de pago presencial",
+    "mercado pago point smart 2": "Implementación de punto de venta móvil",
+    "transbank smart pos + link de pago": "Integración de pagos presenciales y remotos",
+    "transbank webpay plus": "Implementación de pagos web para comercio electrónico",
+    "magister en gestion de empresas agroalimentarias uc": "Formación especializada en gestión agroalimentaria",
+    "doctorado en ciencias de la agricultura y la naturaleza uc": "Fortalecimiento avanzado de capacidades de investigación e innovación",
+    "all in one lenovo en pc factory": "Renovación de infraestructura computacional",
+    "all in one hp i5 en pc factory": "Renovación de infraestructura computacional",
+    "asesoria tecnica inia y soporte local especializado": "Formalización de soporte técnico especializado",
+    "renacer digital en el agro": "Alfabetización digital aplicada al agro",
+}
+
+
+def _solution_display_name(row: dict[str, object], fallback: str = "Acción sin nombre") -> str:
+    raw = str(row.get("solution_name", "") or "").strip()
+    if not raw:
+        return fallback
+    return _GENERIC_SOLUTION_NAMES_ES.get(_norm(raw), raw)
+
+
 def _short(text: str, max_len: int = 170) -> str:
     if not text:
         return ""
@@ -1062,7 +1117,7 @@ def _render_plan_bucket(
         doc.add_text("No se detectaron acciones para esta ventana de tiempo.", size=9.2, color=PALETTE["muted"], indent=10)
         return
     for i, row in enumerate(items, start=1):
-        item_title = f"{i}. {row.get('solution_name', '')}"
+        item_title = f"{i}. {_solution_display_name(row)}"
         item_meta = f"KPI foco: {row.get('kpi', '')} | Etapa: {_horizon_label(str(row.get('plazo', '')))} | Valor: {row.get('price', 'No informado')}"
         urls = _solution_urls(row, max_urls=1)
         item_url = urls[0] if urls else None
@@ -1319,7 +1374,7 @@ def _append_backlog_page(doc: SimplePdf, entries: list[dict[str, object]], *, co
             doc.add_text("Sin acciones pendientes en esta etapa.", size=8.9, color=PALETTE["muted"], indent=8)
             continue
         for idx, row in enumerate(stage_rows, start=1):
-            name = str(row.get("solution_name", "")).strip() or "Acción sin nombre"
+            name = _solution_display_name(row)
             area = str(row.get("domain", "")).strip() or "Sin área clave"
             kpi = str(row.get("kpi", "")).strip() or "No informado"
             cost = str(row.get("price", "No informado")).strip() or "No informado"
@@ -1538,7 +1593,7 @@ def _append_12_month_timeline_page(doc: SimplePdf, entries: list[dict[str, objec
             continue
         for i, row in enumerate(rows, start=1):
             doc.add_text(
-                f"Hito {i}: {row.get('solution_name', '')}",
+                f"Hito {i}: {_solution_display_name(row)}",
                 size=9.7,
                 bold=True,
                 indent=8,
@@ -1677,7 +1732,7 @@ def export_technical_pdf(payload: dict[str, object], output_path: Path) -> None:
         doc.add_text(_horizon_label(horizon), size=11.2, bold=True, color=_horizon_color(horizon), gap_after=2.0)
         rows = sorted(rows, key=lambda r: (-float(r.get("priority", 0)), _norm(str(r.get("solution_name", "")))))
         for idx, row in enumerate(rows, start=1):
-            doc.add_text(f"{idx}. {row.get('solution_name', '')}", size=10.0, bold=True, indent=8, gap_after=0.0)
+            doc.add_text(f"{idx}. {_solution_display_name(row)}", size=10.0, bold=True, indent=8, gap_after=0.0)
             doc.add_text(
                 f"KPI: {row.get('kpi', '')} | Prioridad: {float(row.get('priority', 0)):.2f} | Precio: {row.get('price', 'No informado')}",
                 size=8.8,
@@ -1749,7 +1804,7 @@ def export_friendly_pdf(payload: dict[str, object], output_path: Path) -> None:
         for i, item in enumerate(quick_wins, start=1):
             horizon = str(item.get("plazo", ""))
             marker = _horizon_color(horizon)
-            item_title = f"{i}. {item.get('solution_name', '')}"
+            item_title = f"{i}. {_solution_display_name(item)}"
             item_meta = f"{_horizon_label(horizon)} | KPI: {item.get('kpi', '')} | Valor: {item.get('price', 'No informado')}"
             urls = _solution_urls(item, max_urls=1)
             item_url = urls[0] if urls else None
