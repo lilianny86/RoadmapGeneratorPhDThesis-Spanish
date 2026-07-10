@@ -2055,10 +2055,22 @@ def _render_downloads(result: dict[str, object], language: str) -> None:
             )
 
 
+def _score_to_float(value: object) -> float:
+    try:
+        return float(str(value).replace(",", "."))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _format_score(value: object, language: str) -> str:
+    formatted = f"{_score_to_float(value):.2f}"
+    return formatted.replace(".", ",") if language == "es" else formatted
+
+
 def _render_last_result_summary(last: dict[str, object], language: str) -> None:
     st.success(_t(language, "generated_ok"))
     m1, m2, m3 = st.columns(3)
-    m1.metric(_t(language, "current_score"), last.get("current_score", 0))
+    m1.metric(_t(language, "current_score"), _format_score(last.get("current_score", 0), language))
     m2.metric(_t(language, "target_score"), last.get("target_score", 0))
     m3.metric(_t(language, "actions"), last.get("actions", 0))
     status_text_raw = str(last.get("email_status", _t(language, "email_not_sent")))
@@ -2370,7 +2382,7 @@ def main() -> None:
                 st.session_state["ui_last_result"] = {
                     "files": generated_files,
                     "generated_at": result.get("timestamp", ""),
-                    "current_score": result.get("current_score", 0),
+                    "current_score": round(_score_to_float(result.get("current_score", 0)), 2),
                     "target_score": result.get("target_score", 0),
                     "actions": len(result.get("roadmap_entries", [])),
                     "email_status": email_status,

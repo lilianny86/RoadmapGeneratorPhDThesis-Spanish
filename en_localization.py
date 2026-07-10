@@ -141,7 +141,7 @@ _SOLUTION_DESC_EN = {_norm_key(k): v for k, v in _SOLUTION_DESC_EN_RAW.items()}
 
 _DOMAIN_EN_RAW = {
     "agricultura y sostenibilidad hidrica": "Agriculture and Water Sustainability",
-    "inventarios y sostenibilidad hidrica": "Inventory and Water Sustainability",
+    "inventarios y sostenibilidad hidrica": "Agriculture and Water Sustainability",
     "gestion financiera": "Financial Management",
     "gestion de capacidades": "Capability Management",
     "gestion de la produccion y certificacion para la exportacion": "Production Management and Export Certification",
