@@ -767,6 +767,12 @@ def _metric_card(doc: SimplePdf, *, x: float, y_top: float, width: float, title:
     return y_bottom
 
 
+def _progress_to_target_pct(current_score: float, target_score: float) -> float:
+    if target_score <= 0:
+        return 0.0
+    return min(max((current_score / target_score) * 100.0, 0.0), 100.0)
+
+
 def _render_friendly_summary(
     doc: "SimplePdf",
     entries: list[dict[str, object]],
@@ -779,10 +785,11 @@ def _render_friendly_summary(
     card_top = doc.current_y
     usable = doc.page_width - (2 * doc.margin)
     gap = 12.0
-    card_w = (usable - (2 * gap)) / 3.0
+    card_w = (usable - (3 * gap)) / 4.0
     x0 = doc.margin
     x1 = x0 + card_w + gap
     x2 = x1 + card_w + gap
+    x3 = x2 + card_w + gap
 
     _metric_card(
         doc,
@@ -810,6 +817,15 @@ def _render_friendly_summary(
         title="Total gap",
         value=f"{gap_total:.2f}",
         note="target - current",
+    )
+    _metric_card(
+        doc,
+        x=x3,
+        y_top=card_top,
+        width=card_w,
+        title="Target progress",
+        value=f"{_progress_to_target_pct(current_score, target_score):.1f}%",
+        note="current / target",
     )
     doc.current_y = card_top - 84
 
@@ -1682,10 +1698,11 @@ def export_technical_pdf(payload: dict[str, object], output_path: Path) -> None:
     card_top = doc.current_y
     usable = doc.page_width - (2 * doc.margin)
     gap = 12.0
-    card_w = (usable - (2 * gap)) / 3.0
+    card_w = (usable - (3 * gap)) / 4.0
     x0 = doc.margin
     x1 = x0 + card_w + gap
     x2 = x1 + card_w + gap
+    x3 = x2 + card_w + gap
 
     _metric_card(
         doc,
@@ -1713,6 +1730,15 @@ def export_technical_pdf(payload: dict[str, object], output_path: Path) -> None:
         title="Total gap",
         value=f"{float(result.get('target_score', 0)) - float(result.get('current_score', 0)):.2f}",
         note="target - current",
+    )
+    _metric_card(
+        doc,
+        x=x3,
+        y_top=card_top,
+        width=card_w,
+        title="Target progress",
+        value=f"{_progress_to_target_pct(float(result.get('current_score', 0)), float(result.get('target_score', 0))):.1f}%",
+        note="current / target",
     )
     doc.current_y = card_top - 84
 
