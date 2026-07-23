@@ -131,8 +131,6 @@ def clean_solution_description(text: object) -> str:
     compact = re.sub(r"\s+", " ", str(text or "")).strip()
     if not compact:
         return ""
-    # Keep only actionable detail and avoid truncated fragments with "...".
-    # These fragments come from the KPI transition explanatory block.
     marker = re.search(r"\b(?:Se propone para la transici[o\u00f3]n|It is proposed for the transition)\b", compact, flags=re.IGNORECASE)
     if marker:
         compact = compact[: marker.start()].strip()

@@ -435,11 +435,58 @@ def _apply_no_translate_guard(language: str) -> None:
     setTimeout(hideHeaderActions, 500);
     setTimeout(hideHeaderActions, 1200);
 
+    const hideCloudProfileBadge = () => {{
+      const styleId = "rogen-hide-cloud-profile-badge";
+      let style = doc.getElementById(styleId);
+      if (!style) {{
+        style = doc.createElement("style");
+        style.id = styleId;
+        doc.head.appendChild(style);
+      }}
+      style.textContent = `
+        [class*="viewerBadge" i],
+        [class*="viewer-badge" i],
+        [class*="profileBadge" i],
+        [data-testid*="viewerbadge" i],
+        [data-testid*="viewer-badge" i] {{
+          display: none !important;
+          visibility: hidden !important;
+          pointer-events: none !important;
+        }}
+      `;
+
+      doc.querySelectorAll('a[href*="streamlit.io"], a[href*="streamlit.app"]').forEach((link) => {{
+        if (!link.querySelector("img")) return;
+        const rect = link.getBoundingClientRect();
+        const viewportWidth = doc.documentElement.clientWidth;
+        const viewportHeight = doc.documentElement.clientHeight;
+        const isLowerRight = rect.right >= viewportWidth - 280 && rect.bottom >= viewportHeight - 180;
+        if (!isLowerRight) return;
+
+        const parent = link.parentElement;
+        const parentRect = parent ? parent.getBoundingClientRect() : null;
+        const target = parentRect && parentRect.width <= 360 && parentRect.height <= 160 ? parent : link;
+        target.style.setProperty("display", "none", "important");
+        target.style.setProperty("visibility", "hidden", "important");
+        target.style.setProperty("pointer-events", "none", "important");
+      }});
+    }};
+    hideCloudProfileBadge();
+    setTimeout(hideCloudProfileBadge, 80);
+    setTimeout(hideCloudProfileBadge, 400);
+    setTimeout(hideCloudProfileBadge, 1200);
+
     const headerForObserver = doc.querySelector('[data-testid="stHeader"]');
     if (headerForObserver && !headerForObserver.dataset.rogenHeaderObserver) {{
       headerForObserver.dataset.rogenHeaderObserver = "1";
       const observer = new MutationObserver(() => hideHeaderActions());
       observer.observe(headerForObserver, {{ childList: true, subtree: true, attributes: true }});
+    }}
+
+    if (doc.body && !doc.body.dataset.rogenProfileBadgeObserver) {{
+      doc.body.dataset.rogenProfileBadgeObserver = "1";
+      const profileBadgeObserver = new MutationObserver(() => hideCloudProfileBadge());
+      profileBadgeObserver.observe(doc.body, {{ childList: true, subtree: true }});
     }}
 
     doc.querySelectorAll('input[aria-label^="RUT"], input[placeholder*="12.345.678-5"]').forEach((el) => {{

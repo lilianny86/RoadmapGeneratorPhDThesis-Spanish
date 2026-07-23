@@ -389,7 +389,6 @@ def optimize_recommendations(
             return False
         return True
 
-    # Pase 1: cobertura mínima por dominio.
     if cfg.diversify_domains:
         best_by_domain: dict[str, dict[str, object]] = {}
         for c in sorted(remaining, key=lambda x: float(x.get("_base_score", 0)), reverse=True):
@@ -417,7 +416,6 @@ def optimize_recommendations(
             c["_selected_dynamic_score"] = float(c.get("_base_score", 0))
             selected.append(c)
 
-    # Pase 2: optimización greedy con penalizaciones de repetición.
     while len(selected) < cfg.max_recommendations:
         best_idx = -1
         best_score = -1.0
