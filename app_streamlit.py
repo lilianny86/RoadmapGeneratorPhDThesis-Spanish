@@ -444,6 +444,9 @@ def _apply_no_translate_guard(language: str) -> None:
         doc.head.appendChild(style);
       }}
       style.textContent = `
+        [data-testid="stStatusWidget"],
+        [data-testid="stAppDeployButton"],
+        [data-testid="stMainMenu"],
         [class*="viewerBadge" i],
         [class*="viewer-badge" i],
         [class*="profileBadge" i],
