@@ -285,8 +285,9 @@ def _render_language_flag(language: str) -> None:
 def _apply_no_translate_guard(language: str) -> None:
     lang = _lang(language)
     nonce = datetime.now().strftime("%Y%m%d%H%M%S%f")
-    components.html(
-        f"""
+    try:
+        components.html(
+            f"""
 <script>
 (function () {{
   try {{
@@ -470,11 +471,14 @@ def _apply_no_translate_guard(language: str) -> None:
 }})();
 </script>
 <div style="display:none" aria-hidden="true">{nonce}</div>
-        """,
-        height=0,
-        width=0,
-        scrolling=False,
-    )
+            """,
+            height=0,
+            width=0,
+            scrolling=False,
+        )
+    except Exception:
+        # This is a cosmetic browser guard; it must never prevent the assessment UI from rendering.
+        return
 
 
 def _company_name_for_filename(value: str) -> str:
