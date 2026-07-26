@@ -7,6 +7,8 @@ from io import BytesIO
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
+from costing import estimate_cost_clp, horizon_months, is_monthly_subscription
+from display_format import format_clp, format_decimal, format_integer, format_percentage, to_float
 
 PALETTE = {
     "forest": (0.12, 0.34, 0.24),
@@ -348,10 +350,39 @@ def _parse_clp_amount(price_value: object) -> float | None:
 
 
 def _fmt_clp(value: float | None) -> str:
-    if value is None:
-        return "Not estimable"
-    rounded = int(round(max(value, 0.0)))
-    return "$ " + f"{rounded:,}".replace(",", ".")
+    return format_clp(value, "Not estimable")
+
+
+def _entry_price_amount(row: dict[str, object]) -> float | None:
+    if _norm(row.get("price_type", "")) in {"variable", "unknown"}:
+        return None
+    estimated = estimate_cost_clp(row, use_existing_estimate=True)
+    return estimated if estimated is not None else _parse_clp_amount(row.get("price"))
+
+
+def _entry_price_label(row: dict[str, object], unavailable: str = "Not confirmed (quotation required)") -> str:
+    min_value = row.get("price_min_clp")
+    max_value = row.get("price_max_clp")
+    try:
+        min_amount = max(float(min_value), 0.0) if min_value is not None and str(min_value).strip() else None
+    except (TypeError, ValueError):
+        min_amount = None
+    try:
+        max_amount = max(float(max_value), 0.0) if max_value is not None and str(max_value).strip() else None
+    except (TypeError, ValueError):
+        max_amount = None
+
+    amount = max_amount if max_amount is not None else min_amount
+    if amount is not None:
+        if is_monthly_subscription(row):
+            total = _entry_price_amount(row)
+            if total is not None:
+                return f"{_fmt_clp(amount)}/month x {format_integer(horizon_months(row))} months = {_fmt_clp(total)}"
+        if min_amount is not None and max_amount is not None and min_amount != max_amount:
+            return f"{_fmt_clp(min_amount)} - {_fmt_clp(max_amount)}"
+        return _fmt_clp(amount)
+
+    return unavailable
 
 
 def _build_budget_summary(entries: list[dict[str, object]]) -> list[dict[str, object]]:
@@ -362,7 +393,7 @@ def _build_budget_summary(entries: list[dict[str, object]]) -> list[dict[str, ob
     rows: list[dict[str, object]] = []
     for horizon in HORIZON_ORDER:
         stage_rows = grouped.get(horizon, [])
-        known_values = [_parse_clp_amount(r.get("price")) for r in stage_rows]
+        known_values = [_entry_price_amount(r) for r in stage_rows]
         known_values = [v for v in known_values if v is not None]
         rows.append(
             {
@@ -681,7 +712,7 @@ class SimplePdf:
         self.current_ops.append(f"{PALETTE['short'][0]:.3f} {PALETTE['short'][1]:.3f} {PALETTE['short'][2]:.3f} RG 1.1 w {marker_x:.2f} {y_bar - 1:.2f} m {marker_x:.2f} {y_bar + bar_h + 1:.2f} l S")
         self.current_ops.append(
             self._text_op(
-                f"Gap {gap:.2f}",
+                f"Gap {format_decimal(gap)}",
                 x=bar_x + bar_w + 6,
                 y=y_text,
                 size=8.6,
@@ -797,7 +828,7 @@ def _render_friendly_summary(
         y_top=card_top,
         width=card_w,
         title="Current score",
-        value=f"{current_score:.2f}",
+        value=format_decimal(current_score),
         note="baseline status",
     )
     _metric_card(
@@ -806,7 +837,7 @@ def _render_friendly_summary(
         y_top=card_top,
         width=card_w,
         title="Target score",
-        value=f"{target_score:.2f}",
+        value=format_decimal(target_score),
         note="maturity target",
     )
     _metric_card(
@@ -815,7 +846,7 @@ def _render_friendly_summary(
         y_top=card_top,
         width=card_w,
         title="Total gap",
-        value=f"{gap_total:.2f}",
+        value=format_decimal(gap_total),
         note="target - current",
     )
     _metric_card(
@@ -824,7 +855,7 @@ def _render_friendly_summary(
         y_top=card_top,
         width=card_w,
         title="Target progress",
-        value=f"{_progress_to_target_pct(current_score, target_score):.1f}%",
+        value=format_percentage(_progress_to_target_pct(current_score, target_score)),
         note="current / target",
     )
     doc.current_y = card_top - 84
@@ -909,9 +940,9 @@ def _render_budget_table(
         draw_row(
             [
                 _horizon_label(str(row["stage"])),
-                str(int(row["actions"])),
-                str(int(row["with_cost"])),
-                str(int(row["without_cost"])),
+                format_integer(row["actions"]),
+                format_integer(row["with_cost"]),
+                format_integer(row["without_cost"]),
                 _fmt_clp(float(row["budget_clp"])),
             ],
             fill=PALETTE["card_bg"],
@@ -922,9 +953,9 @@ def _render_budget_table(
     draw_row(
         [
             "Total",
-            str(total_actions),
-            str(total_with_cost),
-            str(total_without_cost),
+            format_integer(total_actions),
+            format_integer(total_with_cost),
+            format_integer(total_without_cost),
             _fmt_clp(total_budget),
         ],
         fill=PALETTE["chip_bg"],
@@ -1168,7 +1199,7 @@ def _render_plan_bucket(
         return
     for i, row in enumerate(items, start=1):
         item_title = f"{i}. {_solution_display_name(row)}"
-        item_meta = f"Focus KPI: {row.get('kpi', '')} | Stage: {_horizon_label(str(row.get('plazo', '')))} | Value: {row.get('price', 'Not reported')}"
+        item_meta = f"Focus KPI: {row.get('kpi', '')} | Stage: {_horizon_label(str(row.get('plazo', '')))} | Value: {_entry_price_label(row)}"
         urls = _solution_urls(row, max_urls=1)
         item_url = urls[0] if urls else None
         item_desc = f"Description: {_brief(str(row.get('solution_description', '')), 180) or 'Description not available.'}"
@@ -1432,7 +1463,7 @@ def _append_backlog_page(doc: SimplePdf, entries: list[dict[str, object]], *, co
             name = _solution_display_name(row)
             area = str(row.get("domain", "")).strip() or "No key area"
             kpi = str(row.get("kpi", "")).strip() or "Not reported"
-            cost = str(row.get("price", "Not reported")).strip() or "Not reported"
+            cost = _entry_price_label(row)
             backlog_title = f"[ ] {idx}. {name}"
             backlog_meta = f"Key area: {area} | KPI: {kpi} | Value: {cost}"
             backlog_h = _estimate_text_block_height(doc, backlog_title, size=9.4, indent=8, gap_after=0.0)
@@ -1656,7 +1687,7 @@ def _append_12_month_timeline_page(doc: SimplePdf, entries: list[dict[str, objec
                 gap_after=0.0,
             )
             doc.add_text(
-                f"KPI: {row.get('kpi', '')} | Value: {row.get('price', 'Not reported')}",
+                f"KPI: {row.get('kpi', '')} | Value: {_entry_price_label(row)}",
                 size=8.4,
                 indent=16,
                 color=PALETTE["slate"],
@@ -1710,7 +1741,7 @@ def export_technical_pdf(payload: dict[str, object], output_path: Path) -> None:
         y_top=card_top,
         width=card_w,
         title="Current score",
-        value=f"{float(result.get('current_score', 0)):.2f}",
+        value=format_decimal(result.get("current_score", 0)),
         note="weighted maturity score",
     )
     _metric_card(
@@ -1719,8 +1750,8 @@ def export_technical_pdf(payload: dict[str, object], output_path: Path) -> None:
         y_top=card_top,
         width=card_w,
         title="Target score",
-        value=f"{float(result.get('target_score', 0)):.2f}",
-        note=f"level {int(result.get('target_level_index', 0))}",
+        value=format_decimal(result.get("target_score", 0)),
+        note=f"level {format_integer(result.get('target_level_index', 0))}",
     )
     _metric_card(
         doc,
@@ -1728,7 +1759,7 @@ def export_technical_pdf(payload: dict[str, object], output_path: Path) -> None:
         y_top=card_top,
         width=card_w,
         title="Total gap",
-        value=f"{float(result.get('target_score', 0)) - float(result.get('current_score', 0)):.2f}",
+        value=format_decimal(to_float(result.get("target_score", 0)) - to_float(result.get("current_score", 0))),
         note="target - current",
     )
     _metric_card(
@@ -1737,7 +1768,7 @@ def export_technical_pdf(payload: dict[str, object], output_path: Path) -> None:
         y_top=card_top,
         width=card_w,
         title="Target progress",
-        value=f"{_progress_to_target_pct(float(result.get('current_score', 0)), float(result.get('target_score', 0))):.1f}%",
+        value=format_percentage(_progress_to_target_pct(to_float(result.get("current_score", 0)), to_float(result.get("target_score", 0)))),
         note="current / target",
     )
     doc.current_y = card_top - 84
@@ -1768,7 +1799,7 @@ def export_technical_pdf(payload: dict[str, object], output_path: Path) -> None:
                 gap_after=0.0,
             )
             doc.add_text(
-                f"Priority {float(row.get('priority', 0)):.2f} | Gap {row.get('gap', 0)} | {row.get('current_label', '')} -> {row.get('target_label', '')}",
+                f"Priority {format_decimal(row.get('priority', 0))} | Gap {format_decimal(row.get('gap', 0))} | {row.get('current_label', '')} -> {row.get('target_label', '')}",
                 size=9.1,
                 indent=12,
                 color=PALETTE["slate"],
@@ -1799,7 +1830,7 @@ def export_technical_pdf(payload: dict[str, object], output_path: Path) -> None:
         for idx, row in enumerate(rows, start=1):
             doc.add_text(f"{idx}. {_solution_display_name(row)}", size=10.0, bold=True, indent=8, gap_after=0.0)
             doc.add_text(
-                f"KPI: {row.get('kpi', '')} | Priority: {float(row.get('priority', 0)):.2f} | Price: {row.get('price', 'Not reported')}",
+                f"KPI: {row.get('kpi', '')} | Priority: {format_decimal(row.get('priority', 0))} | Price: {_entry_price_label(row)}",
                 size=8.8,
                 indent=16,
                 color=PALETTE["slate"],
@@ -1821,7 +1852,7 @@ def export_technical_pdf(payload: dict[str, object], output_path: Path) -> None:
         entries,
         title="Estimated budget by stage",
         accent=PALETTE["forest_dark"],
-        note="Note: totals include only rows with interpretable CLP values. Values in UF or without a reported amount are shown as 'No data'.",
+        note="Note: totals include only verifiable CLP prices. Actions with an unconfirmed cost are reported as 'No data' and require a quotation.",
     )
     _append_30_60_90_page(doc, entries, company_name=str(company.get("name", "Company")), friendly=False)
     _append_12_month_timeline_page(doc, entries, company_name=str(company.get("name", "Company")), friendly=False)
@@ -1870,7 +1901,7 @@ def export_friendly_pdf(payload: dict[str, object], output_path: Path) -> None:
             horizon = str(item.get("plazo", ""))
             marker = _horizon_color(horizon)
             item_title = f"{i}. {_solution_display_name(item)}"
-            item_meta = f"{_horizon_label(horizon)} | KPI: {item.get('kpi', '')} | Value: {item.get('price', 'Not reported')}"
+            item_meta = f"{_horizon_label(horizon)} | KPI: {item.get('kpi', '')} | Value: {_entry_price_label(item)}"
             urls = _solution_urls(item, max_urls=1)
             item_url = urls[0] if urls else None
             item_desc = f"Description: {_brief(str(item.get('solution_description', '')), 170) or 'Description not available.'}"

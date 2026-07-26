@@ -8,17 +8,21 @@ import re
 import smtplib
 import ssl
 import unicodedata
+import uuid
 from datetime import datetime
 from email.message import EmailMessage
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import streamlit as st
 import streamlit.components.v1 as components
 
 from pdf_export import export_friendly_pdf as export_friendly_pdf_es, export_technical_pdf
 from pdf_export_en import export_friendly_pdf as export_friendly_pdf_en
+from consent_export import CONSENT_VERSION, build_consent_record, consent_sections, export_consent_pdf
 from stats_export import build_statistical_csv_bytes, build_statistical_record
+from display_format import format_decimal, format_integer, to_float
 from recommendation_engine import build_engine_config
 from roadmap_core import build_roadmap, load_profile_data, save_traceability_csv, save_traceability_json, save_txt
 from security_config import ENV_KEYS, load_security_config, validate_smtp_config
@@ -26,28 +30,33 @@ from security_config import ENV_KEYS, load_security_config, validate_smtp_config
 
 ROOT = Path(__file__).resolve().parent
 OUTPUT_UI_DIR = ROOT / "outputs" / "ui"
-BUDGET_OPTIONS = [
-    "up_to_1m",
-    "between_1m_5m",
-    "from_5m",
-]
+BUDGET_OPTIONS_BY_COMPANY = {
+    "small": [
+        "up_to_1m",
+        "between_1m_5m",
+    ],
+    "medium": [
+        "up_to_1m",
+        "between_1m_5m",
+        "between_5m_10m",
+    ],
+}
 BUDGET_LABELS_BY_LANG = {
     "es": {
-        "up_to_1m": "Hasta CLP 1.000.000",
-        "between_1m_5m": "Desde CLP 1.000.001 a CLP 4.999.999",
-        "from_5m": "CLP 5.000.000 o más",
+        "up_to_1m": "Hasta CLP $ 1.000.000,00",
+        "between_1m_5m": "Desde CLP $ 1.000.001,00 a CLP $ 5.000.000,00",
+        "between_5m_10m": "Desde CLP $ 5.000.001,00 a CLP $ 10.000.000,00",
     },
     "en": {
-        "up_to_1m": "Up to CLP 1,000,000",
-        "between_1m_5m": "From CLP 1,000,001 to CLP 4,999,999",
-        "from_5m": "CLP 5,000,000 or more",
+        "up_to_1m": "Up to CLP $ 1.000.000,00",
+        "between_1m_5m": "From CLP $ 1.000.001,00 to CLP $ 5.000.000,00",
+        "between_5m_10m": "From CLP $ 5.000.001,00 to CLP $ 10.000.000,00",
     },
 }
 BUDGET_TO_CLP = {
     "up_to_1m": 1_000_000.0,
-    "between_1m_5m": 4_999_999.0,
-    # "CLP 5,000,000 or more" is an open-ended range; None disables the upper budget cap.
-    "from_5m": None,
+    "between_1m_5m": 5_000_000.0,
+    "between_5m_10m": 10_000_000.0,
 }
 RUT_WIDGET_KEY = "company_rut_input"
 FLAGS_DIR = ROOT / "assets" / "localization" / "flags"
@@ -118,6 +127,11 @@ UI_TEXTS = {
         "question_fallback": "Pregunta {qnum}",
         "friendly_label_es": "PDF amigable ES",
         "friendly_label_en": "PDF friendly EN",
+        "consent_title": "Consentimiento informado",
+        "consent_required": "Debe leer y aceptar el consentimiento informado para habilitar la configuración de la evaluación.",
+        "consent_accept": "He leído y acepto voluntariamente el consentimiento informado.",
+        "consent_download": "Descargar comprobante de consentimiento",
+        "email_body_with_consent": "Estimado/a,\nSe adjuntan el Roadmap customizado y el comprobante de consentimiento informado para la empresa {company}.\n*Este es un correo automático. No responder.",
     },
     "en": {
         "page_title": "Customized Roadmap Generator | Capture",
@@ -181,6 +195,11 @@ UI_TEXTS = {
         "question_fallback": "Question {qnum}",
         "friendly_label_es": "Friendly PDF ES",
         "friendly_label_en": "Friendly PDF EN",
+        "consent_title": "Informed consent",
+        "consent_required": "Read and accept the informed consent to enable the assessment configuration.",
+        "consent_accept": "I have read and voluntarily accept the informed consent.",
+        "consent_download": "Download consent record",
+        "email_body_with_consent": "Dear Recipient,\nAttached are the customized roadmap and informed-consent record for {company}.\n*This is an automated email. Please do not reply.",
     },
 }
 
@@ -202,6 +221,11 @@ def _t(lang: str, key: str, **kwargs: object) -> str:
 
 def _budget_labels(lang: str) -> dict[str, str]:
     return BUDGET_LABELS_BY_LANG[_lang(lang)]
+
+
+def _budget_options(company_type: str) -> list[str]:
+    key = "small" if str(company_type).strip().lower() == "small" else "medium"
+    return BUDGET_OPTIONS_BY_COMPANY[key]
 
 
 def _target_level_help(company_type: str, language: str) -> str:
@@ -272,80 +296,6 @@ def _apply_no_translate_guard(language: str) -> None:
     // Remove stale language switch nodes injected by older versions in the Streamlit header.
     doc.querySelectorAll('#rogen-header-lang-switch').forEach((el) => el.remove());
 
-    const clearSidebarState = () => {{
-      [window.parent.localStorage, window.parent.sessionStorage].forEach((store) => {{
-        if (!store) return;
-        try {{
-          for (let i = store.length - 1; i >= 0; i -= 1) {{
-            const key = store.key(i) || "";
-            const lower = key.toLowerCase();
-            if (lower.includes("sidebar") || lower.includes("collapsed")) {{
-              store.removeItem(key);
-            }}
-          }}
-        }} catch (e) {{}}
-      }});
-    }};
-
-    const setImportant = (el, prop, value) => {{
-      if (el && el.style) el.style.setProperty(prop, value, "important");
-    }};
-
-    const ensureSidebarExpanded = () => {{
-      const sidebar = doc.querySelector('[data-testid="stSidebar"]');
-      const collapsedButton = doc.querySelector('[data-testid="stSidebarCollapsedControl"] button, [data-testid="collapsedControl"] button, button[aria-label*="sidebar" i], button[title*="sidebar" i], button[aria-label*="barra" i], button[title*="barra" i]');
-      const rect = sidebar ? sidebar.getBoundingClientRect() : null;
-      const style = sidebar ? window.parent.getComputedStyle(sidebar) : null;
-      const hidden = !sidebar || !rect || rect.width < 96 || rect.right <= 96 || style.display === "none" || style.visibility === "hidden" || style.opacity === "0" || sidebar.getAttribute("aria-expanded") === "false";
-      if (hidden && collapsedButton) {{
-        const parent = collapsedButton.closest('[data-testid="stSidebarCollapsedControl"], [data-testid="collapsedControl"]') || collapsedButton;
-        setImportant(parent, "display", "flex");
-        setImportant(parent, "visibility", "visible");
-        setImportant(parent, "opacity", "1");
-        setImportant(parent, "pointer-events", "auto");
-        setImportant(parent, "z-index", "1000012");
-        setImportant(collapsedButton, "pointer-events", "auto");
-        collapsedButton.click();
-      }}
-    }};
-
-    const forceSidebarVisible = () => {{
-      clearSidebarState();
-      ensureSidebarExpanded();
-      const parentWindow = window.parent || window;
-      const sidebarWidth = parentWindow.matchMedia && parentWindow.matchMedia('(max-width: 760px)').matches ? '300px' : '340px';
-      const sidebar = doc.querySelector('[data-testid="stSidebar"]');
-      if (sidebar) {{
-        setImportant(sidebar, "display", "block");
-        setImportant(sidebar, "visibility", "visible");
-        setImportant(sidebar, "opacity", "1");
-        setImportant(sidebar, "flex", `0 0 ${{sidebarWidth}}`);
-        setImportant(sidebar, "width", sidebarWidth);
-        setImportant(sidebar, "min-width", sidebarWidth);
-        setImportant(sidebar, "max-width", sidebarWidth);
-        setImportant(sidebar, "box-sizing", "border-box");
-        setImportant(sidebar, "overflow-x", "hidden");
-        setImportant(sidebar, "transform", "translateX(0px)");
-        setImportant(sidebar, "pointer-events", "auto");
-        sidebar.querySelectorAll(':scope > div, [data-testid="stSidebarUserContent"]').forEach((el) => {{
-          setImportant(el, "visibility", "visible");
-          setImportant(el, "opacity", "1");
-          setImportant(el, "box-sizing", "border-box");
-          setImportant(el, "overflow-x", "hidden");
-          setImportant(el, "transform", "translateX(0px)");
-          setImportant(el, "width", "100%");
-          setImportant(el, "min-width", "0");
-          setImportant(el, "max-width", "100%");
-        }});
-      }}
-    }};
-    forceSidebarVisible();
-    setTimeout(forceSidebarVisible, 80);
-    setTimeout(forceSidebarVisible, 240);
-    setTimeout(forceSidebarVisible, 700);
-    setTimeout(forceSidebarVisible, 1400);
-    setTimeout(forceSidebarVisible, 2800);
-
     const html = doc.documentElement;
     const body = doc.body;
     if (html) {{
@@ -403,7 +353,9 @@ def _apply_no_translate_guard(language: str) -> None:
 
       const toolbar = header.querySelector('[data-testid="stToolbar"]');
       if (toolbar) {{
-        toolbar.style.pointerEvents = 'none';
+        // The native sidebar restore control belongs to this toolbar. The
+        // observer below hides only administrative Cloud actions.
+        toolbar.style.pointerEvents = 'auto';
         toolbar.style.zIndex = '1';
       }}
 
@@ -419,6 +371,14 @@ def _apply_no_translate_guard(language: str) -> None:
         if (isLanguageSwitch) {{
           node.style.display = "";
           node.style.pointerEvents = "auto";
+          return;
+        }}
+        if (isSidebarControl) {{
+          const target = node.closest('[data-testid="collapsedControl"], [data-testid="stSidebarCollapsedControl"], button, [role="button"]') || node;
+          target.style.display = "flex";
+          target.style.visibility = "visible";
+          target.style.opacity = "1";
+          target.style.pointerEvents = "auto";
           return;
         }}
         if (!isSidebarControl && isCloudAction) {{
@@ -630,8 +590,7 @@ def _render_styles() -> None:
   width: min(92vw, 540px);
   border-radius: 14px;
   border: 1px solid rgba(201, 216, 191, 0.45);
-  background:
-    linear-gradient(118deg, rgba(248, 244, 233, 0.98) 0%, rgba(232, 239, 226, 0.98) 60%, rgba(219, 233, 221, 0.95) 100%);
+  background: #ffffff;
   box-shadow: 0 20px 46px rgba(9, 25, 17, 0.34);
   padding: 1.08rem 1rem 0.98rem;
   text-align: center;
@@ -674,16 +633,12 @@ def _render_styles() -> None:
 }
 
 [data-testid="stAppViewContainer"] {
-  background:
-    radial-gradient(circle at 12% 12%, rgba(111, 143, 78, 0.22), transparent 32%),
-    radial-gradient(circle at 90% 4%, rgba(163, 112, 63, 0.16), transparent 28%),
-    linear-gradient(180deg, #e7f0e2 0%, #f8f4e9 52%, #f3ebd6 100%);
+  background: #f5f8f5;
 }
 
 [data-testid="stHeader"] {
-  background:
-    linear-gradient(90deg, #2f6f46 0%, #3d7d4a 55%, #8a6744 100%) !important;
-  border-bottom: 1px solid rgba(25, 83, 56, 0.55);
+  background: #123f32 !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
 }
 
 /* Oculta por completo el bloque de acciones Cloud (Fork/GitHub/menú). */
@@ -691,12 +646,12 @@ def _render_styles() -> None:
   display: flex !important;
   visibility: visible !important;
   opacity: 1 !important;
-  pointer-events: none !important;
+  pointer-events: auto !important;
   z-index: 1 !important;
 }
 
 [data-testid="stHeader"] [data-testid="stToolbar"] * {
-  pointer-events: none !important;
+  pointer-events: auto !important;
 }
 
 #rogen-header-lang-switch,
@@ -903,8 +858,7 @@ def _render_styles() -> None:
 }
 
 [data-testid="stSidebar"] {
-  background:
-    linear-gradient(180deg, #2f6f46 0%, #3d7d4a 58%, #8a6744 100%) !important;
+  background: #164b39 !important;
   border-right: 1px solid rgba(255, 255, 255, 0.10);
 }
 
@@ -961,18 +915,17 @@ h1, h2, h3 {
 }
 
 .app-card {
-  background:
-    linear-gradient(115deg, rgba(245, 237, 213, 0.88) 0%, rgba(248, 244, 233, 0.92) 58%, rgba(219, 233, 221, 0.88) 100%);
-  border: 1px solid rgba(47, 109, 60, 0.28);
-  border-left: 6px solid var(--agri-leaf-700);
-  border-radius: 14px;
-  box-shadow: 0 10px 24px rgba(47, 69, 50, 0.12);
+  background: #ffffff;
+  border: 1px solid #d8e2d9;
+  border-top: 4px solid #2f6d3c;
+  border-radius: 8px;
+  box-shadow: 0 6px 16px rgba(26, 56, 43, 0.08);
   padding: 16px 18px;
   margin-bottom: 14px;
 }
 
 .app-tip {
-  background: linear-gradient(90deg, rgba(201, 216, 191, 0.58), rgba(232, 239, 226, 0.80));
+  background: #eff6ed;
   border: 1px solid rgba(53, 94, 59, 0.28);
   border-left: 5px solid #355e3b;
   border-radius: 10px;
@@ -1030,7 +983,7 @@ h1, h2, h3 {
 }
 
 .app-warn {
-  background: linear-gradient(90deg, rgba(245, 231, 189, 0.84), rgba(252, 247, 224, 0.96));
+  background: #fff8e8;
   border: 1px solid rgba(138, 103, 68, 0.38);
   border-left: 5px solid #8a6744;
   border-radius: 10px;
@@ -1072,14 +1025,14 @@ h1, h2, h3 {
 }
 
 .app-status-ok {
-  background: linear-gradient(90deg, rgba(205, 230, 201, 0.62), rgba(235, 246, 233, 0.86));
+  background: #edf8ed;
   border: 1px solid rgba(47, 109, 60, 0.34);
   border-left: 5px solid #2f6d3c;
   color: #234730 !important;
 }
 
 .app-status-warn {
-  background: linear-gradient(90deg, rgba(245, 231, 189, 0.80), rgba(252, 247, 224, 0.96));
+  background: #fff8e8;
   border: 1px solid rgba(138, 103, 68, 0.36);
   border-left: 5px solid #8a6744;
   color: #3b2f24 !important;
@@ -1319,8 +1272,8 @@ h1, h2, h3 {
 
 [data-testid="stButton"] > button {
   border: 0;
-  border-radius: 12px;
-  background: linear-gradient(135deg, var(--agri-leaf-700) 0%, var(--agri-leaf-500) 65%, #8ea763 100%);
+  border-radius: 7px;
+  background: #176b4d;
   color: #fbf8ef;
   font-weight: 700;
   letter-spacing: 0.2px;
@@ -1343,7 +1296,7 @@ h1, h2, h3 {
   padding-top: 0.5rem;
   padding-bottom: 0.48rem;
   margin-top: 0.72rem;
-  background: linear-gradient(180deg, rgba(248, 244, 233, 0.84) 0%, rgba(248, 244, 233, 0.97) 68%);
+  background: rgba(245, 248, 245, 0.96);
   border-top: 1px solid rgba(111, 143, 78, 0.25);
   backdrop-filter: blur(2px);
   -webkit-backdrop-filter: blur(2px);
@@ -1419,7 +1372,7 @@ h1, h2, h3 {
 }
 
 [data-testid="stSlider"] div[data-baseweb="slider"] > div > div {
-  background: linear-gradient(to right, rgba(47, 109, 60, 0.9), rgba(111, 143, 78, 0.25)) !important;
+  background: rgba(47, 109, 60, 0.45) !important;
 }
 
 [data-testid="stSlider"] div[data-baseweb="slider"] > div[data-testid="stTickBar"] {
@@ -1548,31 +1501,32 @@ h1, h2, h3 {
   margin-top: 0.2rem;
 }
 
-/* Final header/sidebar policy: fixed sidebar, no native collapse/restore buttons. */
+/* Keep Cloud actions hidden while preserving Streamlit's native sidebar controls. */
 [data-testid="stHeader"] [data-testid="stToolbar"] {
-  display: none !important;
-  visibility: hidden !important;
-  opacity: 0 !important;
-  pointer-events: none !important;
-}
-
-/* Hide only the in-sidebar collapse button. Keep the restore control available as a fallback
-   in case Streamlit/browser state starts with the sidebar collapsed. */
-[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] {
-  display: none !important;
-  visibility: hidden !important;
-  opacity: 0 !important;
-  pointer-events: none !important;
-}
-
-[data-testid="stSidebar"],
-[data-testid="stSidebar"] > div {
+  display: flex !important;
   visibility: visible !important;
   opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+/* The configuration panel can be collapsed and restored by the visitor. */
+[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] {
+  display: flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
 }
 
 [data-testid="stHeader"] [data-testid="collapsedControl"],
 [data-testid="stSidebarCollapsedControl"] {
+  display: flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+[data-testid="stHeader"] [data-testid="stToolbar"] [data-testid="collapsedControl"],
+[data-testid="stHeader"] [data-testid="stToolbar"] [data-testid="stSidebarCollapsedControl"] {
   display: flex !important;
   visibility: visible !important;
   opacity: 1 !important;
@@ -1640,48 +1594,23 @@ h1, h2, h3 {
 }
 
 
-/* Sidebar policy: keep the native Streamlit sidebar expanded and the fields centered. */
+/* Keep the configuration panel comfortably readable and collapsible. */
 :root {
-  --rogen-sidebar-width: 340px;
-  --rogen-sidebar-field-width: 300px;
+  --rogen-sidebar-width: 320px;
+  --rogen-sidebar-field-width: 280px;
   --rogen-sidebar-pad-x: 20px;
 }
 
-[data-testid="stSidebar"] {
-  display: block !important;
-  visibility: visible !important;
-  opacity: 1 !important;
-  box-sizing: border-box !important;
-  flex: 0 0 var(--rogen-sidebar-width) !important;
+[data-testid="stSidebar"][aria-expanded="true"],
+[data-testid="stSidebar"][aria-expanded="true"] > div:first-child {
   width: var(--rogen-sidebar-width) !important;
   min-width: var(--rogen-sidebar-width) !important;
-  max-width: var(--rogen-sidebar-width) !important;
-  transform: translateX(0) !important;
-  pointer-events: auto !important;
-  overflow-x: hidden !important;
-}
-
-[data-testid="stSidebar"] > div {
-  visibility: visible !important;
-  opacity: 1 !important;
-  box-sizing: border-box !important;
-  width: 100% !important;
-  min-width: 0 !important;
-  max-width: 100% !important;
-  transform: translateX(0) !important;
-  overflow-x: hidden !important;
 }
 
 [data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
-  visibility: visible !important;
-  opacity: 1 !important;
   box-sizing: border-box !important;
-  width: 100% !important;
-  min-width: 0 !important;
-  max-width: 100% !important;
   padding-left: var(--rogen-sidebar-pad-x) !important;
   padding-right: var(--rogen-sidebar-pad-x) !important;
-  transform: translateX(0) !important;
   overflow-x: hidden !important;
 }
 
@@ -1724,15 +1653,13 @@ h1, h2, h3 {
   margin-right: auto !important;
 }
 
-/* Prevent users from hiding the sidebar once expanded. */
 [data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] {
-  display: none !important;
-  visibility: hidden !important;
-  opacity: 0 !important;
-  pointer-events: none !important;
+  display: flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
 }
 
-/* Keep the restore control available only as a fallback if a browser keeps a collapsed state. */
 [data-testid="stHeader"] [data-testid="collapsedControl"],
 [data-testid="stSidebarCollapsedControl"] {
   display: flex !important;
@@ -1750,6 +1677,53 @@ h1, h2, h3 {
   }
 }
 
+.app-title-band {
+  display: flex;
+  align-items: center;
+  min-height: 88px;
+  margin: 0 0 1.25rem;
+  padding: 1.05rem 1.25rem;
+  background: #ffffff;
+  border: 1px solid #d8e2d9;
+  border-left: 6px solid #2f6f8f;
+  border-radius: 8px;
+  box-shadow: 0 6px 16px rgba(26, 56, 43, 0.08);
+}
+
+.app-title-band h1 {
+  margin: 0;
+  color: #173d31;
+  font-family: "Bitter", serif;
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1.16;
+}
+
+[class*="st-key-question_card_"] {
+  margin: 0.75rem 0 !important;
+  padding: 1rem 1.1rem 0.9rem !important;
+  background: #ffffff;
+  border: 1px solid #d8e2d9;
+  border-radius: 8px;
+  box-shadow: 0 3px 10px rgba(26, 56, 43, 0.06);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+[class*="st-key-question_card_"]:hover {
+  border-color: #8fb2a0;
+  box-shadow: 0 7px 16px rgba(26, 56, 43, 0.10);
+}
+
+[class*="st-key-question_card_"] .question-label {
+  margin-top: 0;
+  color: #176b4d;
+}
+
+[class*="st-key-question_card_"] [data-testid="stRadio"] > div {
+  background: #f6faf6;
+  border-color: #d8e2d9;
+}
+
 </style>
         """,
         unsafe_allow_html=True,
@@ -1758,6 +1732,7 @@ h1, h2, h3 {
 
 def _render_sidebar(profile: dict[str, object], max_level: int, language: str, company_type: str) -> dict[str, object]:
     budget_labels = _budget_labels(language)
+    budget_options = _budget_options(company_type)
     st.sidebar.header(_t(language, "company_data_header"))
     company_name = st.sidebar.text_input(_t(language, "company_name"), value="", placeholder=_t(language, "company_name_placeholder"))
     if RUT_WIDGET_KEY not in st.session_state:
@@ -1796,8 +1771,8 @@ def _render_sidebar(profile: dict[str, object], max_level: int, language: str, c
         st.sidebar.markdown('<div class="rogen-small-level-slider-marker" aria-hidden="true"><span>1</span><span>2</span><span>3</span></div>', unsafe_allow_html=True)
     budget_total_key = st.sidebar.radio(
         _t(language, "improvement_budget"),
-        options=BUDGET_OPTIONS,
-        index=1,
+        options=budget_options,
+        index=min(1, len(budget_options) - 1),
         format_func=lambda key: budget_labels.get(str(key), str(key)),
     )
     st.sidebar.markdown(f"<div class='sidebar-required-note'>{html.escape(_t(language, 'required_note'))}</div>", unsafe_allow_html=True)
@@ -1816,6 +1791,7 @@ def _render_sidebar(profile: dict[str, object], max_level: int, language: str, c
         "target_level": target_level,
         "budget_total_label": budget_labels.get(str(budget_total_key), str(budget_total_key)),
         "budget_total_clp": BUDGET_TO_CLP[str(budget_total_key)],
+        "budget_range": str(budget_total_key),
         "profile_label": localized_profile_label,
     }
 
@@ -1963,6 +1939,7 @@ def _send_pdfs_via_gmail(
     company_email: str,
     pdf_paths: list[Path],
     language: str,
+    include_consent: bool = False,
 ) -> list[str]:
     cfg, _ = load_security_config(root)
     cfg = _merge_smtp_config_from_streamlit_secrets(cfg)
@@ -1988,7 +1965,8 @@ def _send_pdfs_via_gmail(
     msg["Subject"] = _t(language, "email_subject", company=company_name)
     msg["From"] = cfg.smtp_from
     msg["To"] = ", ".join(targets)
-    msg.set_content(_t(language, "email_body", company=company_name))
+    body_key = "email_body_with_consent" if include_consent else "email_body"
+    msg.set_content(_t(language, body_key, company=company_name))
 
     for pdf_path in pdf_paths:
         if not pdf_path.exists():
@@ -2071,6 +2049,7 @@ def _render_downloads(result: dict[str, object], language: str) -> None:
     files: dict[str, str] = result.get("files", {}) if isinstance(result, dict) else {}
     pdf_es: Path | None = None
     pdf_en: Path | None = None
+    consent_pdf: Path | None = None
     for path_str in files.values():
         path = Path(path_str)
         if not path.exists() or path.suffix.lower() != ".pdf":
@@ -2080,11 +2059,13 @@ def _render_downloads(result: dict[str, object], language: str) -> None:
             pdf_es = path
         if name_txt.endswith("_en.pdf"):
             pdf_en = path
+        if name_txt.startswith("consent_"):
+            consent_pdf = path
 
-    if pdf_es is None and pdf_en is None:
+    if pdf_es is None and pdf_en is None and consent_pdf is None:
         return
 
-    col_es, col_en = st.columns(2)
+    col_es, col_en, col_consent = st.columns(3)
     if pdf_es is not None:
         with col_es:
             st.download_button(
@@ -2103,26 +2084,32 @@ def _render_downloads(result: dict[str, object], language: str) -> None:
                 mime="application/pdf",
                 use_container_width=True,
             )
+    if consent_pdf is not None:
+        with col_consent:
+            st.download_button(
+                label=_t(language, "consent_download"),
+                data=consent_pdf.read_bytes(),
+                file_name=consent_pdf.name,
+                mime="application/pdf",
+                use_container_width=True,
+            )
 
 
 def _score_to_float(value: object) -> float:
-    try:
-        return float(str(value).replace(",", "."))
-    except (TypeError, ValueError):
-        return 0.0
+    return to_float(value)
 
 
 def _format_score(value: object, language: str) -> str:
-    formatted = f"{_score_to_float(value):.2f}"
-    return formatted.replace(".", ",") if language == "es" else formatted
+    _ = language
+    return format_decimal(value)
 
 
 def _render_last_result_summary(last: dict[str, object], language: str) -> None:
     st.success(_t(language, "generated_ok"))
     m1, m2, m3 = st.columns(3)
     m1.metric(_t(language, "current_score"), _format_score(last.get("current_score", 0), language))
-    m2.metric(_t(language, "target_score"), last.get("target_score", 0))
-    m3.metric(_t(language, "actions"), last.get("actions", 0))
+    m2.metric(_t(language, "target_score"), _format_score(last.get("target_score", 0), language))
+    m3.metric(_t(language, "actions"), format_integer(last.get("actions", 0)))
     status_text_raw = str(last.get("email_status", _t(language, "email_not_sent")))
     status_label = html.escape(_t(language, "email_label"))
     status_text = html.escape(status_text_raw)
@@ -2139,17 +2126,49 @@ def _render_last_result_summary(last: dict[str, object], language: str) -> None:
 
 
 def _render_intro_block(language: str) -> None:
-    title = html.escape(_t(language, "intro_title"))
-    paragraph_1 = html.escape(_t(language, "intro_p1"))
-    paragraph_2 = html.escape(_t(language, "intro_p2"))
+    with st.container(border=True):
+        st.subheader(_t(language, "intro_title"))
+        st.write(_t(language, "intro_p1"))
+        st.write(_t(language, "intro_p2"))
+
+
+def _consent_contact_email(root: Path) -> str:
+    cfg, _ = load_security_config(root)
+    cfg = _merge_smtp_config_from_streamlit_secrets(cfg)
+    return str(getattr(cfg, "smtp_from", "") or getattr(cfg, "smtp_user", "") or "").strip()
+
+
+def _render_consent_block(language: str) -> bool:
+    contact_email = _consent_contact_email(ROOT)
+    with st.container(border=True):
+        st.subheader(_t(language, "consent_title"))
+        for section_title, paragraph in consent_sections(language, contact_email):
+            st.markdown(f"**{html.escape(section_title)}**")
+            st.write(paragraph)
+        accepted = st.checkbox(_t(language, "consent_accept"), key="consent_accepted_checkbox")
+
+    if not accepted:
+        st.session_state.pop("consent_session", None)
+        st.info(_t(language, "consent_required"))
+        return False
+
+    if "consent_session" not in st.session_state:
+        accepted_at = datetime.now(ZoneInfo("America/Santiago")).isoformat(timespec="seconds")
+        st.session_state["consent_session"] = {
+            "consent_id": uuid.uuid4().hex,
+            "accepted_at": accepted_at,
+            "language": language,
+            "consent_version": CONSENT_VERSION,
+        }
+    return True
+
+
+def _render_main_title(language: str, company_type_label: str = "") -> None:
+    title = _t(language, "main_title")
+    if company_type_label:
+        title = f"{title} | {company_type_label}"
     st.markdown(
-        f"""
-<section class="app-intro app-intro--academic" aria-label="{title}">
-  <div class="app-intro-title">{title}</div>
-  <p>{paragraph_1}</p>
-  <p>{paragraph_2}</p>
-</section>
-        """,
+        f"<section class='app-title-band'><h1>{html.escape(title)}</h1></section>",
         unsafe_allow_html=True,
     )
 
@@ -2232,21 +2251,37 @@ def main() -> None:
         "small": _t(language, "company_small"),
         "medium": _t(language, "company_medium"),
     }
+    landing_rendered = False
+    if "consent_session" not in st.session_state:
+        _render_main_title(language)
+        _render_intro_block(language)
+        landing_rendered = True
+        if not _render_consent_block(language):
+            st.sidebar.selectbox(
+                _t(language, "company_type"),
+                options=["__select__", "small", "medium"],
+                format_func=lambda x: company_type_labels.get(x, x),
+                disabled=True,
+            )
+            st.sidebar.markdown("---")
+            return
+
     company_type = st.sidebar.selectbox(
         _t(language, "company_type"),
         options=["__select__", "small", "medium"],
         format_func=lambda x: company_type_labels.get(x, x),
     )
     st.sidebar.markdown("---")
-    if company_type == "__select__":
-        st.title(_t(language, "main_title"))
-    else:
-        selected_company_type = company_type_labels.get(company_type, "")
-        st.title(f"{_t(language, 'main_title')} {selected_company_type}")
+    selected_company_type = "" if company_type == "__select__" else company_type_labels.get(company_type, "")
 
     if company_type == "__select__":
-        _render_intro_block(language)
+        if not landing_rendered:
+            _render_main_title(language)
+            _render_intro_block(language)
+            _render_consent_block(language)
         return
+
+    _render_main_title(language, selected_company_type)
 
     try:
         profile = _load_profile_cached(str(ROOT), company_type, language, _catalog_cache_version())
@@ -2273,7 +2308,7 @@ def main() -> None:
             f"""
 <div class="app-card summary-card">
   <div class="summary-label">{_t(language, "questions")}</div>
-  <div class="summary-value">{len(questions)}</div>
+  <div class="summary-value">{format_integer(len(questions))}</div>
 </div>
             """,
             unsafe_allow_html=True,
@@ -2293,7 +2328,7 @@ def main() -> None:
             f"""
 <div class="app-card summary-card">
   <div class="summary-label">{_t(language, "target_level_card")}</div>
-  <div class="summary-value">{int(ui_cfg["target_level"])}</div>
+  <div class="summary-value">{format_integer(ui_cfg["target_level"])}</div>
 </div>
             """,
             unsafe_allow_html=True,
@@ -2305,15 +2340,16 @@ def main() -> None:
         options = [str(x) for x in q.get("options", [])]
         prompt = _clean_prompt(str(q.get("prompt", "")), qnum, language)
 
-        st.markdown(f"<div class='question-label'>{_t(language, 'question_fallback', qnum=qnum)}</div>", unsafe_allow_html=True)
-        st.markdown(f"<div class='question-text'>{html.escape(prompt)}</div>", unsafe_allow_html=True)
-        st.radio(
-            label=f"{_t(language, 'answer')} {qnum}",
-            options=list(range(len(options))),
-            format_func=lambda i, rows=options: rows[i],
-            key=f"q_{company_type}_{qnum}",
-            label_visibility="collapsed",
-        )
+        with st.container(key=f"question_card_{company_type}_{qnum}"):
+            st.markdown(f"<div class='question-label'>{_t(language, 'question_fallback', qnum=qnum)}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='question-text'>{html.escape(prompt)}</div>", unsafe_allow_html=True)
+            st.radio(
+                label=f"{_t(language, 'answer')} {qnum}",
+                options=list(range(len(options))),
+                format_func=lambda i, rows=options: rows[i],
+                key=f"q_{company_type}_{qnum}",
+                label_visibility="collapsed",
+            )
 
     generate_clicked = False
     with st.container(key="generate_action_bar"):
@@ -2374,10 +2410,26 @@ def main() -> None:
                     generated_at=generated_at,
                     language="en",
                 )
+                consent_session = st.session_state.get("consent_session", {})
+                if not isinstance(consent_session, dict):
+                    raise RuntimeError("Missing informed-consent acceptance.")
+                consent_language = _lang(str(consent_session.get("language", language)))
+                consent_record = build_consent_record(
+                    consent_id=str(consent_session.get("consent_id", "")),
+                    language=consent_language,
+                    accepted_at=str(consent_session.get("accepted_at", "")),
+                    participant_email=str(ui_cfg["company_email"]),
+                    company_name=str(ui_cfg["company_name"]),
+                    company_rut=str(ui_cfg["company_rut"]),
+                    contact_email=_consent_contact_email(ROOT),
+                )
+                result_consent_json = run_dir / "consent_record.json"
+                result_consent_pdf = run_dir / f"consent_{case_name}_{stamp}_{consent_language}.pdf"
 
                 payload_export = dict(payload_selected)
                 payload_export.pop("catalog_validation_report", None)
                 result_json.write_text(json.dumps(payload_export, ensure_ascii=False, indent=2), encoding="utf-8")
+                result_consent_json.write_text(json.dumps(consent_record, ensure_ascii=False, indent=2), encoding="utf-8")
                 save_txt(payload_selected, result_txt)
                 save_traceability_json(payload_selected, result_trace_json)
                 save_traceability_csv(payload_selected, result_trace_csv)
@@ -2387,14 +2439,17 @@ def main() -> None:
                     "TXT": str(result_txt),
                     "Traceability JSON": str(result_trace_json),
                     "Traceability CSV": str(result_trace_csv),
+                    "Consent record JSON": str(result_consent_json),
                 }
 
                 export_technical_pdf(payload_selected, result_pdf_tech)
                 export_friendly_pdf_es(payload_es, result_pdf_es)
                 export_friendly_pdf_en(payload_en, result_pdf_en)
+                export_consent_pdf(consent_record, result_consent_pdf)
                 generated_files["Technical PDF"] = str(result_pdf_tech)
                 generated_files[_t(language, "friendly_label_es")] = str(result_pdf_es)
                 generated_files[_t(language, "friendly_label_en")] = str(result_pdf_en)
+                generated_files[_t(language, "consent_download")] = str(result_consent_pdf)
 
                 selected_pdf = result_pdf_en if language == "en" else result_pdf_es
                 email_status = _t(language, "email_not_sent")
@@ -2403,8 +2458,9 @@ def main() -> None:
                         root=ROOT,
                         company_name=str(ui_cfg["company_name"]),
                         company_email=str(ui_cfg["company_email"]),
-                        pdf_paths=[selected_pdf],
+                        pdf_paths=[selected_pdf, result_consent_pdf],
                         language=language,
+                        include_consent=True,
                     )
                     email_status = f"{_t(language, 'sent_prefix')}: {', '.join(recipients)}"
                 except Exception as email_exc:

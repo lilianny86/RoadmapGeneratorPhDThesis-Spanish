@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from costing import estimate_cost_clp
+
 
 def _norm(value: object) -> str:
     t = unicodedata.normalize("NFKD", str(value or "")).encode("ascii", "ignore").decode("ascii")
@@ -84,10 +86,10 @@ def _to_float(value: Any, default: float | None = None) -> float | None:
 
 @dataclass
 class EngineConfig:
-    max_recommendations: int = 40
-    max_candidates_per_kpi: int = 4
+    max_recommendations: int = 60
+    max_candidates_per_kpi: int = 6
     max_per_provider: int = 5
-    max_per_kpi: int = 2
+    max_per_kpi: int = 3
     enforce_unique_solution: bool = True
     diversify_domains: bool = True
     min_domain_coverage: int = 4
@@ -181,6 +183,7 @@ def match_solutions(
     origin: str,
     target: str,
     max_candidates: int,
+    allow_kpi_fallback: bool = False,
 ) -> list[dict[str, object]]:
     selected: list[dict[str, object]] = []
     for s in solutions:
@@ -197,7 +200,7 @@ def match_solutions(
         if same_transition or same_levels:
             selected.append(s)
 
-    if not selected:
+    if not selected and allow_kpi_fallback:
         for s in solutions:
             if _norm(sol_hint) in _norm(s.get("model", "")) and _norm(kpi) == _norm(s.get("kpi", "")):
                 selected.append(s)
@@ -213,29 +216,19 @@ def match_solutions(
 
 
 def _estimate_cost(candidate: dict[str, object], fallback_cost: float) -> float | None:
-    ptype = _norm(candidate.get("price_type", "unknown"))
-    pmax = _to_float(candidate.get("price_max_clp"), default=None)
-    pmin = _to_float(candidate.get("price_min_clp"), default=None)
-    if ptype == "free":
-        return 0.0
-    if pmax is not None:
-        return max(pmax, 0.0)
-    if pmin is not None:
-        return max(pmin, 0.0)
-    if fallback_cost <= 0:
-        return None
-    return fallback_cost
+    return estimate_cost_clp(
+        candidate,
+        fallback_cost=fallback_cost if fallback_cost > 0 else None,
+        use_existing_estimate=False,
+    )
 
 
 def _score_candidates(candidates: list[dict[str, object]], cfg: EngineConfig) -> list[dict[str, object]]:
     if not candidates:
         return []
     max_priority = max(float(c.get("priority", 0) or 0) for c in candidates)
-    known_costs = [
-        _to_float(c.get("price_max_clp"), default=None)
-        for c in candidates
-        if _to_float(c.get("price_max_clp"), default=None) is not None
-    ]
+    known_costs = [_estimate_cost(c, fallback_cost=0.0) for c in candidates]
+    known_costs = [cost for cost in known_costs if cost is not None]
     fallback_cost = (sum(known_costs) / len(known_costs)) if known_costs else 0.0
     max_cost = max(known_costs) if known_costs else 1.0
 
@@ -372,6 +365,7 @@ def optimize_recommendations(
     domain_count: dict[str, int] = {}
     kpi_count: dict[str, int] = {}
     used_solution_names: set[str] = set()
+    required_transition_groups: dict[str, list[dict[str, object]]] = {}
 
     def can_select(c: dict[str, object]) -> bool:
         if len(selected) >= cfg.max_recommendations:
@@ -389,6 +383,48 @@ def optimize_recommendations(
             return False
         return True
 
+    def register_selection(c: dict[str, object], dynamic_score: float) -> None:
+        nonlocal used_total
+
+        provider = _norm(c.get("provider", ""))
+        domain = _norm(c.get("domain", ""))
+        kpi = _norm(c.get("kpi", ""))
+        name = _norm(c.get("solution_name", ""))
+        cost = _to_float(c.get("cost_estimated_clp"), default=None)
+        if cost is not None:
+            used_total += cost
+            horizon = _canonical_horizon(c.get("plazo", "Unclassified"))
+            used_by_horizon[horizon] = used_by_horizon.get(horizon, 0.0) + cost
+        provider_count[provider] = provider_count.get(provider, 0) + 1
+        domain_count[domain] = domain_count.get(domain, 0) + 1
+        kpi_count[kpi] = kpi_count.get(kpi, 0) + 1
+        if name:
+            used_solution_names.add(name)
+        c["_selected_dynamic_score"] = dynamic_score
+        selected.append(c)
+
+    for c in remaining:
+        transition_key = str(c.get("required_transition_key", "")).strip()
+        if transition_key:
+            required_transition_groups.setdefault(transition_key, []).append(c)
+
+    uncovered_required_transitions: list[str] = []
+    for transition_key in sorted(required_transition_groups):
+        stage_candidates = required_transition_groups[transition_key]
+        stage_candidates.sort(
+            key=lambda c: (
+                _norm(c.get("solution_name", "")) in used_solution_names,
+                -float(c.get("_base_score", 0)),
+                _norm(c.get("solution_name", "")),
+            )
+        )
+        eligible_candidates = [candidate for candidate in stage_candidates if can_select(candidate)]
+        if not eligible_candidates:
+            uncovered_required_transitions.append(transition_key)
+            continue
+        best = eligible_candidates[0]
+        register_selection(best, float(best.get("_base_score", 0)))
+
     if cfg.diversify_domains:
         best_by_domain: dict[str, dict[str, object]] = {}
         for c in sorted(remaining, key=lambda x: float(x.get("_base_score", 0)), reverse=True):
@@ -399,22 +435,7 @@ def optimize_recommendations(
         for _, c in list(best_by_domain.items())[: max(0, cfg.min_domain_coverage)]:
             if not can_select(c):
                 continue
-            provider = _norm(c.get("provider", ""))
-            domain = _norm(c.get("domain", ""))
-            kpi = _norm(c.get("kpi", ""))
-            name = _norm(c.get("solution_name", ""))
-            cost = _to_float(c.get("cost_estimated_clp"), default=None)
-            if cost is not None:
-                used_total += cost
-                h = _canonical_horizon(c.get("plazo", "Unclassified"))
-                used_by_horizon[h] = used_by_horizon.get(h, 0.0) + cost
-            provider_count[provider] = provider_count.get(provider, 0) + 1
-            domain_count[domain] = domain_count.get(domain, 0) + 1
-            kpi_count[kpi] = kpi_count.get(kpi, 0) + 1
-            if name:
-                used_solution_names.add(name)
-            c["_selected_dynamic_score"] = float(c.get("_base_score", 0))
-            selected.append(c)
+            register_selection(c, float(c.get("_base_score", 0)))
 
     while len(selected) < cfg.max_recommendations:
         best_idx = -1
@@ -435,22 +456,7 @@ def optimize_recommendations(
         if best_idx < 0:
             break
         c = remaining[best_idx]
-        provider = _norm(c.get("provider", ""))
-        domain = _norm(c.get("domain", ""))
-        kpi = _norm(c.get("kpi", ""))
-        name = _norm(c.get("solution_name", ""))
-        cost = _to_float(c.get("cost_estimated_clp"), default=None)
-        if cost is not None:
-            used_total += cost
-            h = _canonical_horizon(c.get("plazo", "Unclassified"))
-            used_by_horizon[h] = used_by_horizon.get(h, 0.0) + cost
-        provider_count[provider] = provider_count.get(provider, 0) + 1
-        domain_count[domain] = domain_count.get(domain, 0) + 1
-        kpi_count[kpi] = kpi_count.get(kpi, 0) + 1
-        if name:
-            used_solution_names.add(name)
-        c["_selected_dynamic_score"] = best_score
-        selected.append(c)
+        register_selection(c, best_score)
 
     selected.sort(key=lambda x: (_horizon_order(str(x.get("plazo", ""))), -float(x.get("_selected_dynamic_score", 0))))
 
@@ -477,6 +483,10 @@ def optimize_recommendations(
         "selected_count": len(explained),
         "used_budget_total_clp": round(used_total, 2),
         "used_budget_by_horizon": {k: round(v, 2) for k, v in used_by_horizon.items()},
+        "required_transition_count": len(required_transition_groups),
+        "covered_required_transition_count": len(required_transition_groups) - len(uncovered_required_transitions),
+        "uncovered_required_transitions": uncovered_required_transitions,
+        "required_transition_budget_exception_count": 0,
         "config": {
             "max_recommendations": cfg.max_recommendations,
             "max_candidates_per_kpi": cfg.max_candidates_per_kpi,

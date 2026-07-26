@@ -6,17 +6,19 @@ import io
 import re
 from datetime import datetime
 
+from costing import estimate_cost_clp
+
 
 BUDGET_RANGE_NUMERIC = {
     "up_to_1m": 1,
     "between_1m_5m": 2,
-    "from_5m": 3,
+    "between_5m_10m": 3,
 }
 
 BUDGET_RANGE_LABEL_ES = {
     "up_to_1m": "Hasta CLP 1.000.000",
-    "between_1m_5m": "Desde CLP 1.000.001 a CLP 4.999.999",
-    "from_5m": "CLP 5.000.000 o m\u00e1s",
+    "between_1m_5m": "Desde CLP 1.000.001 a CLP 5.000.000",
+    "between_5m_10m": "Desde CLP 5.000.001 a CLP 10.000.000",
 }
 
 
@@ -36,21 +38,18 @@ def _to_float(value: object) -> float | None:
 
 
 def _price_value_clp(row: dict[str, object]) -> float | None:
-    for key in ("price_max_clp", "price_min_clp", "cost_estimated_clp"):
-        parsed = _to_float(row.get(key))
-        if parsed is not None:
-            return max(parsed, 0.0)
-    return None
+    if str(row.get("price_type", "")).strip().lower() in {"variable", "unknown"}:
+        return None
+    return estimate_cost_clp(row, use_existing_estimate=True)
 
 
 def _budget_cap_clp(budget_range: str) -> float | None:
     if budget_range == "up_to_1m":
         return 1_000_000.0
     if budget_range == "between_1m_5m":
-        return 4_999_999.0
-    # Open range: the company declared capacity from CLP 5,000,000 upward.
-    if budget_range == "from_5m":
-        return None
+        return 5_000_000.0
+    if budget_range == "between_5m_10m":
+        return 10_000_000.0
     return None
 
 

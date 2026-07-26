@@ -12,11 +12,13 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from catalog_quality import build_catalog_v3, catalog_report_to_text
+from costing import estimate_cost_clp
 from en_localization import (
     localize_domain,
     localize_kda,
     localize_kpi,
     localize_option_text,
+    localize_price_display,
     localize_question_prompt,
     localize_solution_description,
     localize_solution_name,
@@ -290,7 +292,23 @@ def load_profile_data(root: Path, profile: str, language: str = "es") -> dict[st
         last_domain = domain or last_domain
         last_kda = kda or last_kda
         texts = [(r[3 + i].strip() if len(r) > 3 + i else "") for i in range(n_levels)]
-        parsed_model.append({"domain": domain, "kda": kda, "kpi": kpi, "level_labels": levels, "level_texts": texts})
+        available_levels = [
+            level_index
+            for level_index, text in enumerate(texts, start=1)
+            if norm(text) not in {"n/a", "na", "no aplica", "not applicable"}
+        ]
+        if not available_levels:
+            available_levels = list(range(1, n_levels + 1))
+        parsed_model.append(
+            {
+                "domain": domain,
+                "kda": kda,
+                "kpi": kpi,
+                "level_labels": levels,
+                "level_texts": texts,
+                "available_levels": available_levels,
+            }
+        )
 
     total = min(len(questionnaire), len(parsed_model))
     questions = []
@@ -301,7 +319,11 @@ def load_profile_data(root: Path, profile: str, language: str = "es") -> dict[st
         weight = weights.get(key, 1.0)
         raw_options = [str(o).strip() for o in qd["options"] if str(o).strip()]
         options = [localize_option_text(o, language=language) for o in raw_options]
-        mapping = [min(idx + 1, len(qm["level_labels"])) for idx in range(len(options))]
+        available_levels = list(qm["available_levels"])
+        if len(options) == len(available_levels):
+            mapping = available_levels
+        else:
+            mapping = [min(idx + 1, len(qm["level_labels"])) for idx in range(len(options))]
         questions.append(
             {
                 "number": i + 1,
@@ -313,6 +335,7 @@ def load_profile_data(root: Path, profile: str, language: str = "es") -> dict[st
                 "options": options,
                 "level_labels": qm["level_labels"],
                 "level_texts": qm["level_texts"],
+                "available_levels": available_levels,
                 "mapping": mapping,
             }
         )
@@ -404,6 +427,8 @@ def load_solutions(root: Path) -> tuple[list[dict[str, object]], dict[str, objec
                 "price_type": row["price_type"],
                 "price_min_clp": row["price_min_clp"],
                 "price_max_clp": row["price_max_clp"],
+                "months_min": row["months_min"],
+                "months_max": row["months_max"],
                 "impact_level": row["impact_level"],
                 "impact_score": row["impact_score"],
                 "effort_level": row["effort_level"],
@@ -506,9 +531,12 @@ def build_traceability_entries(
                 "selected_option_text": kpi_row.get("selected_option_text", "") if isinstance(kpi_row, dict) else "",
                 "current_label": row.get("current_label", kpi_row.get("current_label", "") if isinstance(kpi_row, dict) else ""),
                 "target_label": row.get("target_label", kpi_row.get("target_label", "") if isinstance(kpi_row, dict) else ""),
-                "gap": kpi_row.get("gap", row.get("gap", 0)) if isinstance(kpi_row, dict) else row.get("gap", 0),
+                "gap": row.get("gap", kpi_row.get("gap", 0) if isinstance(kpi_row, dict) else 0),
                 "priority": row.get("priority", kpi_row.get("priority", 0) if isinstance(kpi_row, dict) else 0),
                 "transition": transition,
+                "overall_current_label": row.get("overall_current_label", kpi_row.get("current_label", "") if isinstance(kpi_row, dict) else ""),
+                "overall_target_label": row.get("overall_target_label", kpi_row.get("target_label", "") if isinstance(kpi_row, dict) else ""),
+                "overall_gap": row.get("overall_gap", kpi_row.get("gap", 0) if isinstance(kpi_row, dict) else 0),
                 "horizon": row.get("plazo", ""),
                 "recommendation": row.get("solution_name", ""),
                 "provider": row.get("provider", ""),
@@ -562,6 +590,8 @@ def build_roadmap(
     domain_target: dict[str, list[tuple[float, float]]] = defaultdict(list)
     kpi_results = []
     candidate_entries: list[dict[str, object]] = []
+    required_transition_keys: list[str] = []
+    unmatched_required_transitions: list[dict[str, object]] = []
 
     for q in questions:
         n = int(q["number"])
@@ -575,9 +605,13 @@ def build_roadmap(
         if opt > len(options):
             opt = len(options)
 
-        current = mapping[opt - 1] if mapping else min(opt, len(labels))
-        current = max(1, min(current, len(labels)))
-        target = min(target_level, len(labels))
+        available_levels = [int(level) for level in q.get("available_levels", [])]
+        if not available_levels:
+            available_levels = list(range(1, len(labels) + 1))
+        current = mapping[opt - 1] if mapping else min(opt, available_levels[-1])
+        current = max(available_levels[0], min(current, available_levels[-1]))
+        target_candidates = [level for level in available_levels if level <= target_level]
+        target = target_candidates[-1] if target_candidates else available_levels[0]
         domain_localized = localize_domain(str(q["domain"]), language=language)
         kda_localized = localize_kda(str(q["kda"]), language=language)
         kpi_localized = localize_kpi(str(q["kpi"]), language=language)
@@ -588,7 +622,9 @@ def build_roadmap(
         if target <= current:
             continue
 
-        gap = target - current
+        current_position = available_levels.index(current)
+        target_position = available_levels.index(target)
+        gap = target_position - current_position
         priority = round(gap * float(q["weight"]), 4)
         c_label = labels[current - 1]
         t_label = labels[target - 1]
@@ -613,54 +649,100 @@ def build_roadmap(
             }
         )
 
-        matches = match_solutions(
-            solutions,
-            sol_hint=str(profile["sol_hint"]),
-            domain=q["domain"],
-            kda=q["kda"],
-            kpi=q["kpi"],
-            transition=transition,
-            origin=c_label,
-            target=t_label,
-            max_candidates=int(getattr(engine_cfg, "max_candidates_per_kpi", 4)),
-        )
-        for s in matches:
-            cleaned_description = clean_solution_description(s.get("description", ""))
-            candidate_entries.append(
-                {
-                    "domain": domain_localized,
-                    "kda": kda_localized,
-                    "kpi": kpi_localized,
-                    "transition": transition,
-                    "plazo": _horizon(str(s.get("plazo", ""))),
-                    "solution_name": localize_solution_name(str(s.get("name", "")), language=language),
-                    "solution_description": localize_solution_description(cleaned_description, language=language),
-                    "provider": s.get("provider", ""),
-                    "provider_url": s.get("provider_url", ""),
-                    "source": s.get("source", ""),
-                    "source_url": s.get("source_url", ""),
-                    "price": s.get("price", "No informado" if str(language).lower() != "en" else "Not reported") or ("No informado" if str(language).lower() != "en" else "Not reported"),
-                    "price_type": s.get("price_type", "unknown"),
-                    "price_min_clp": s.get("price_min_clp"),
-                    "price_max_clp": s.get("price_max_clp"),
-                    "impact_level": s.get("impact_level", "Medio" if str(language).lower() != "en" else "Medium"),
-                    "impact_score": s.get("impact_score", 3.0),
-                    "effort_level": s.get("effort_level", "Medio" if str(language).lower() != "en" else "Medium"),
-                    "effort_score": s.get("effort_score", 3.0),
-                    "risk_level": s.get("risk_level", "Medio" if str(language).lower() != "en" else "Medium"),
-                    "risk_score": s.get("risk_score", 3.0),
-                    "dependencies": s.get("dependencies", []),
-                    "priority": priority,
-                    "option": s.get("option", 0),
-                    "question_number": n,
-                    "current_label": c_label,
-                    "target_label": t_label,
-                }
+        stage_levels = available_levels[current_position : target_position + 1]
+        for stage_current, stage_target in zip(stage_levels, stage_levels[1:]):
+            stage_current_label = labels[stage_current - 1]
+            stage_target_label = labels[stage_target - 1]
+            stage_transition = f"{stage_current_label}->{stage_target_label}"
+            required_transition_key = f"{n}:{stage_transition}"
+            required_transition_keys.append(required_transition_key)
+            matches = match_solutions(
+                solutions,
+                sol_hint=str(profile["sol_hint"]),
+                domain=q["domain"],
+                kda=q["kda"],
+                kpi=q["kpi"],
+                transition=stage_transition,
+                origin=stage_current_label,
+                target=stage_target_label,
+                max_candidates=int(getattr(engine_cfg, "max_candidates_per_kpi", 4)),
+                allow_kpi_fallback=False,
             )
+            if not matches:
+                unmatched_required_transitions.append(
+                    {
+                        "question_number": n,
+                        "kpi": kpi_localized,
+                        "transition": stage_transition,
+                    }
+                )
+            for s in matches:
+                cleaned_description = clean_solution_description(s.get("description", ""))
+                candidate_entries.append(
+                    {
+                        "domain": domain_localized,
+                        "kda": kda_localized,
+                        "kpi": kpi_localized,
+                        "transition": stage_transition,
+                        "required_transition_key": required_transition_key,
+                        "plazo": _horizon(str(s.get("plazo", ""))),
+                        "solution_name": localize_solution_name(str(s.get("name", "")), language=language),
+                        "solution_description": localize_solution_description(cleaned_description, language=language),
+                        "provider": s.get("provider", ""),
+                        "provider_url": s.get("provider_url", ""),
+                        "source": s.get("source", ""),
+                        "source_url": s.get("source_url", ""),
+                        "price": localize_price_display(
+                            str(s.get("price", "No informado" if str(language).lower() != "en" else "Not reported") or ("No informado" if str(language).lower() != "en" else "Not reported")),
+                            language=language,
+                        ),
+                        "price_type": s.get("price_type", "unknown"),
+                        "price_min_clp": s.get("price_min_clp"),
+                        "price_max_clp": s.get("price_max_clp"),
+                        "months_min": s.get("months_min"),
+                        "months_max": s.get("months_max"),
+                        "impact_level": s.get("impact_level", "Medio" if str(language).lower() != "en" else "Medium"),
+                        "impact_score": s.get("impact_score", 3.0),
+                        "effort_level": s.get("effort_level", "Medio" if str(language).lower() != "en" else "Medium"),
+                        "effort_score": s.get("effort_score", 3.0),
+                        "risk_level": s.get("risk_level", "Medio" if str(language).lower() != "en" else "Medium"),
+                        "risk_score": s.get("risk_score", 3.0),
+                        "dependencies": s.get("dependencies", []),
+                        "priority": priority,
+                        "gap": 1,
+                        "option": s.get("option", 0),
+                        "question_number": n,
+                        "current_label": stage_current_label,
+                        "target_label": stage_target_label,
+                        "overall_current_label": c_label,
+                        "overall_target_label": t_label,
+                        "overall_gap": gap,
+                    }
+                )
 
     kpi_results.sort(key=lambda x: (float(x["priority"]), float(x["gap"])), reverse=True)
 
     optimized_entries, engine_report = optimize_recommendations(candidate_entries, engine_cfg)
+    budget_uncovered_keys = set(engine_report.get("uncovered_required_transitions", []))
+    catalog_uncovered_keys = {
+        f"{row['question_number']}:{row['transition']}"
+        for row in unmatched_required_transitions
+    }
+    all_uncovered_keys = budget_uncovered_keys | catalog_uncovered_keys
+    transition_by_key = {key: key.split(":", 1)[1] for key in required_transition_keys}
+    engine_report["required_transition_count"] = len(required_transition_keys)
+    engine_report["covered_required_transition_count"] = len(required_transition_keys) - len(all_uncovered_keys)
+    engine_report["uncovered_required_transitions"] = [
+        transition_by_key[key]
+        for key in required_transition_keys
+        if key in all_uncovered_keys
+    ]
+    engine_report["budget_excluded_required_transitions"] = [
+        transition_by_key[key]
+        for key in required_transition_keys
+        if key in budget_uncovered_keys
+    ]
+    engine_report["missing_catalog_transitions"] = unmatched_required_transitions
     dedup: dict[tuple[str, str, str, str], dict[str, object]] = {}
     for e in optimized_entries:
         key = (norm(str(e["kpi"])), norm(str(e["transition"])), norm(str(e["solution_name"])), norm(str(e["plazo"])))
@@ -829,6 +911,9 @@ def save_traceability_csv(payload: dict[str, object], path: Path) -> None:
         "gap",
         "priority",
         "transition",
+        "overall_current_label",
+        "overall_target_label",
+        "overall_gap",
         "horizon",
         "recommendation",
         "provider",
@@ -911,14 +996,8 @@ def _rebuild_engine_budget_summary(entries: list[dict[str, object]]) -> tuple[fl
     total = 0.0
     by_horizon: dict[str, float] = {}
     for row in entries:
-        cost_raw = row.get("price_max_clp")
-        if cost_raw is None:
-            cost_raw = row.get("price_min_clp")
-        if cost_raw is None:
-            cost_raw = row.get("cost_estimated_clp")
-        try:
-            cost = float(cost_raw)
-        except Exception:
+        cost = estimate_cost_clp(row, use_existing_estimate=True)
+        if cost is None:
             continue
         if cost < 0:
             continue

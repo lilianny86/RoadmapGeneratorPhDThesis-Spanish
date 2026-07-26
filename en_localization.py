@@ -139,6 +139,19 @@ _SOLUTION_DESC_EN_RAW = {
 _SOLUTION_DESC_EN = {_norm_key(k): v for k, v in _SOLUTION_DESC_EN_RAW.items()}
 
 
+_PRICE_DISPLAY_EN_RAW = {
+    "31072 clp/month desde el mes 4; promocion de 14990 clp/month durante los primeros 3 meses": "CLP 31,072/month from month 4; promotional CLP 14,990/month for the first 3 months",
+    "piloto o convenio; sin precio publico vigente clp": "Pilot or agreement; no current public price (CLP)",
+    "postulacion o proyecto cofinanciado; sin precio publico unico clp": "Application or co-funded project; no single public price (CLP)",
+    "sin precio publico unico; costo variable segun diametro, longitud, mano de obra y diseno hidraulico; requiere cotizacion clp": "No single public price; cost varies by diameter, length, labor, and hydraulic design; quotation required (CLP)",
+    "sin precio publico unico; costo variable segun diametro, longitud, accesorios, mano de obra y superficie; requiere cotizacion clp": "No single public price; cost varies by diameter, length, accessories, labor, and coverage area; quotation required (CLP)",
+    "sin precio publico vigente para el modelo especifico; requiere cotizacion de un equipo equivalente clp": "No current public price for the specific model; quotation for an equivalent device is required (CLP)",
+    "11000000 clp total programa": "CLP 11,000,000 total program",
+    "16720000 clp total programa": "CLP 16,720,000 total program",
+}
+_PRICE_DISPLAY_EN = {_norm_key(k): v for k, v in _PRICE_DISPLAY_EN_RAW.items()}
+
+
 _DOMAIN_EN_RAW = {
     "agricultura y sostenibilidad hidrica": "Agriculture and Water Sustainability",
     "inventarios y sostenibilidad hidrica": "Agriculture and Water Sustainability",
@@ -256,6 +269,15 @@ def localize_solution_description(description: str, language: str = "en") -> str
     if str(language).lower() != "en":
         return raw
     return _SOLUTION_DESC_EN.get(_norm_key(raw), raw)
+
+
+def localize_price_display(price: str, language: str = "en") -> str:
+    raw = str(price or "").strip()
+    if not raw:
+        return ""
+    if str(language).lower() != "en":
+        return raw
+    return _PRICE_DISPLAY_EN.get(_norm_key(raw), raw)
 
 
 def localize_domain(domain: str, language: str = "en") -> str:
