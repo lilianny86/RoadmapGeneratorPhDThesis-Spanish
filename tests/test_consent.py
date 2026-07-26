@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import MagicMock, patch
 
-from app_streamlit import _apply_no_translate_guard, _send_pdfs_via_gmail
+from app_streamlit import _send_pdfs_via_gmail
 from consent_export import (
     CONSENT_VERSION,
     RESEARCHER_NAME,
@@ -26,10 +26,6 @@ class _PdfAttachment:
 
 
 class ConsentTests(unittest.TestCase):
-    @patch("app_streamlit.components.html", side_effect=RuntimeError("component unavailable"))
-    def test_cosmetic_browser_guard_cannot_stop_the_app(self, _: MagicMock) -> None:
-        _apply_no_translate_guard("es")
-
     def test_spanish_and_english_text_identify_the_thesis_and_researcher(self) -> None:
         spanish = " ".join(text for _, text in consent_sections("es", "contact@example.org"))
         english = " ".join(text for _, text in consent_sections("en", "contact@example.org"))

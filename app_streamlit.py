@@ -16,7 +16,6 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 from pdf_export import export_friendly_pdf as export_friendly_pdf_es, export_technical_pdf
 from pdf_export_en import export_friendly_pdf as export_friendly_pdf_en
@@ -2248,7 +2247,6 @@ def main() -> None:
         st.session_state["ui_language"] = _lang(str(qp_lang))
 
     language = _lang(str(st.session_state.get("ui_language", "es")))
-    _apply_no_translate_guard(language)
     _render_language_flag(language)
 
     st.sidebar.header(_t(language, "setup_header"))
@@ -2513,7 +2511,6 @@ def main() -> None:
         current_lang = _lang(str(st.session_state["ui_last_result"].get("language", language)))
         _render_last_result_summary(st.session_state["ui_last_result"], current_lang)
         _render_downloads(st.session_state["ui_last_result"], current_lang)
-        _scroll_to_result_once()
 
 
 def run_app() -> None:
