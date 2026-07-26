@@ -131,6 +131,7 @@ UI_TEXTS = {
         "consent_required": "Debe leer y aceptar el consentimiento informado para habilitar la configuración de la evaluación.",
         "consent_accept": "He leído y acepto voluntariamente el consentimiento informado.",
         "consent_download": "Descargar comprobante de consentimiento",
+        "startup_error": "RoGen no pudo iniciar. Recargue la página o contacte a la investigadora responsable.",
         "email_body_with_consent": "Estimado/a,\nSe adjuntan el Roadmap customizado y el comprobante de consentimiento informado para la empresa {company}.\n*Este es un correo automático. No responder.",
     },
     "en": {
@@ -199,6 +200,7 @@ UI_TEXTS = {
         "consent_required": "Read and accept the informed consent to enable the assessment configuration.",
         "consent_accept": "I have read and voluntarily accept the informed consent.",
         "consent_download": "Download consent record",
+        "startup_error": "RoGen could not start. Please reload the page or contact the responsible researcher.",
         "email_body_with_consent": "Dear Recipient,\nAttached are the customized roadmap and informed-consent record for {company}.\n*This is an automated email. Please do not reply.",
     },
 }
@@ -2514,5 +2516,15 @@ def main() -> None:
         _scroll_to_result_once()
 
 
+def run_app() -> None:
+    try:
+        main()
+    except Exception as exc:
+        language = _lang(str(st.query_params.get("ui_lang", "es")))
+        st.error(_t(language, "startup_error"))
+        if str(st.query_params.get("debug", "")) == "1":
+            st.code(f"{type(exc).__name__}: {exc}")
+
+
 if __name__ == "__main__":
-    main()
+    run_app()

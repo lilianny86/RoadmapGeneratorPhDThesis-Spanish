@@ -1,5 +1,5 @@
-from app_streamlit import main
+from app_streamlit import run_app
 
 
 if __name__ == "__main__":
-    main()
+    run_app()
