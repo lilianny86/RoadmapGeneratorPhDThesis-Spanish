@@ -27,8 +27,8 @@ def consent_sections(language: str, contact_email: str) -> list[tuple[str, str]]
             (
                 "Invitation and purpose",
                 f"You are invited to participate voluntarily in the doctoral thesis \"{THESIS_TITLE_EN}\". "
-                f"The responsible researcher and interviewer is {RESEARCHER_NAME}, {UNIVERSITY_NAME_EN}. "
-                "The study assesses the current maturity of agricultural SMEs and uses the results to produce a customized technology-adoption roadmap.",
+                f"The responsible researcher is {RESEARCHER_NAME}, a PhD student in Computer Engineering at {UNIVERSITY_NAME_EN}. "
+                "The study diagnoses the current state of agricultural SMEs using a predefined set of indicators and uses the results to produce a customized technology-adoption roadmap.",
             ),
             (
                 "What participation involves",
@@ -56,8 +56,8 @@ def consent_sections(language: str, contact_email: str) -> list[tuple[str, str]]
         (
             "Invitación y propósito",
             f"Se le invita a participar voluntariamente en la tesis doctoral \"{THESIS_TITLE_ES}\". "
-            f"La investigadora responsable y entrevistadora es {RESEARCHER_NAME}, {UNIVERSITY_NAME_ES}. "
-            "El estudio evalúa la madurez actual de las pymes agrícolas y utiliza los resultados para generar una hoja de ruta personalizada de adopción tecnológica.",
+            f"La investigadora responsable es {RESEARCHER_NAME}, estudiante del Doctorado en Ingeniería Informática de la {UNIVERSITY_NAME_ES}. "
+            "El estudio realiza un diagnóstico del estado actual de las pymes agrícolas, usando como base un grupo de indicadores previamente definidos, y utiliza los resultados para generar una hoja de ruta personalizada de adopción tecnológica.",
         ),
         (
             "En qué consiste la participación",

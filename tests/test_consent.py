@@ -32,8 +32,12 @@ class ConsentTests(unittest.TestCase):
 
         self.assertIn("tesis doctoral", spanish)
         self.assertIn(RESEARCHER_NAME, spanish)
+        self.assertIn("Doctorado en Ingeniería Informática", spanish)
+        self.assertIn("indicadores previamente definidos", spanish)
         self.assertIn("doctoral thesis", english)
         self.assertIn(RESEARCHER_NAME, english)
+        self.assertIn("PhD student in Computer Engineering", english)
+        self.assertIn("predefined set of indicators", english)
 
     def test_consent_record_uses_checkbox_acceptance_and_pending_interviewer_signature(self) -> None:
         record = build_consent_record(
