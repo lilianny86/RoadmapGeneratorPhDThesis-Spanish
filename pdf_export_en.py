@@ -851,7 +851,7 @@ def _render_friendly_summary(
         width=card_w,
         title="Total gap",
         value=format_decimal(gap_total),
-        note="Target - current",
+        note="Target - Current",
     )
     _metric_card(
         doc,
@@ -860,7 +860,7 @@ def _render_friendly_summary(
         width=card_w,
         title="Target progress",
         value=format_percentage(_progress_to_target_pct(current_score, target_score)),
-        note="Current / target",
+        note="Current / Target",
     )
     doc.current_y = card_top - 84
 
@@ -1764,7 +1764,7 @@ def export_technical_pdf(payload: dict[str, object], output_path: Path) -> None:
         width=card_w,
         title="Total gap",
         value=format_decimal(to_float(result.get("target_score", 0)) - to_float(result.get("current_score", 0))),
-        note="Target - current",
+        note="Target - Current",
     )
     _metric_card(
         doc,
@@ -1773,7 +1773,7 @@ def export_technical_pdf(payload: dict[str, object], output_path: Path) -> None:
         width=card_w,
         title="Target progress",
         value=format_percentage(_progress_to_target_pct(to_float(result.get("current_score", 0)), to_float(result.get("target_score", 0)))),
-        note="Current / target",
+        note="Current / Target",
     )
     doc.current_y = card_top - 84
 
