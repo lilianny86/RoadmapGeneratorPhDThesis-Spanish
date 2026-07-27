@@ -17,18 +17,16 @@ from en_localization import (
     localize_domain,
     localize_kda,
     localize_kpi,
-    localize_option_text,
     localize_price_display,
-    localize_question_prompt,
     localize_solution_description,
     localize_solution_name,
 )
 from pdf_export import export_friendly_pdf, export_technical_pdf
+from questionnaire_instrument import INSTRUMENT_VERSION, get_questionnaire
 from recommendation_engine import build_engine_config, match_solutions, optimize_recommendations
 from security_config import load_security_config, scan_hardcoded_secrets, validate_smtp_config
 
 NS_X = {"a": "http://schemas.openxmlformats.org/spreadsheetml/2006/main", "pr": "http://schemas.openxmlformats.org/package/2006/relationships"}
-NS_W = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
 
 
 def norm(text: str) -> str:
@@ -115,20 +113,6 @@ def _localize_engine_summary(summary: object, language: str) -> object:
     return out
 
 
-def _localize_level_description(text: object, language: str) -> str:
-    raw = str(text or "").strip()
-    if str(language).lower() != "en" or not raw:
-        return raw
-    key = norm(raw)
-    if key.startswith("sin conocimiento ni aplicacion de estandares de certificacion"):
-        return (
-            "No knowledge or application of certification standards.\n\n"
-            "The company sells mainly in the local market and does not face certification requirements.\n"
-            "It has limited information on applicable standards or compliance protocols."
-        )
-    return raw
-
-
 def clean_solution_description(text: object) -> str:
     compact = re.sub(r"\s+", " ", str(text or "")).strip()
     if not compact:
@@ -201,30 +185,6 @@ def read_xlsx(path: Path) -> dict[str, list[list[str]]]:
         return out
 
 
-def read_docx_questions(path: Path) -> list[dict[str, object]]:
-    with zipfile.ZipFile(path) as zf:
-        doc = ET.fromstring(zf.read("word/document.xml"))
-    paras = []
-    for p in doc.findall(".//w:p", NS_W):
-        txt = "".join((n.text or "") for n in p.findall(".//w:t", NS_W)).strip()
-        if txt:
-            paras.append(txt)
-    q = []
-    prompt = ""
-    opts: list[str] = []
-    for line in paras:
-        if line.startswith("Question ") or line.startswith("Pregunta "):
-            if prompt:
-                q.append({"prompt": prompt, "options": opts})
-            prompt = line
-            opts = []
-        elif prompt:
-            opts.append(line)
-    if prompt:
-        q.append({"prompt": prompt, "options": opts})
-    return q
-
-
 def pick_sheet(names: list[str], hint: str) -> str:
     h = norm(hint)
     for n in names:
@@ -245,8 +205,8 @@ def profile_cfg(profile: str, language: str = "es") -> dict[str, str]:
     label_small = "Small-sized enterprise" if lang == "en" else "Pequeña empresa"
     label_medium = "Medium-sized enterprise" if lang == "en" else "Mediana empresa"
     cfg = {
-        "small": {"label": label_small, "q_file": "Cuestionario pequenas empresas.docx", "model_hint": "pequen", "weight_hint": "pequen", "sol_hint": "pequen"},
-        "medium": {"label": label_medium, "q_file": "Cuestionario medianas empresas.docx", "model_hint": "median", "weight_hint": "median", "sol_hint": "median"},
+        "small": {"label": label_small, "model_hint": "pequen", "weight_hint": "pequen", "sol_hint": "pequen"},
+        "medium": {"label": label_medium, "model_hint": "median", "weight_hint": "median", "sol_hint": "median"},
     }
     if profile not in cfg:
         raise RuntimeError("company type must be small or medium")
@@ -255,15 +215,14 @@ def profile_cfg(profile: str, language: str = "es") -> dict[str, str]:
 
 def load_profile_data(root: Path, profile: str, language: str = "es") -> dict[str, object]:
     cfg = profile_cfg(profile, language=language)
-    model_xlsx = root / "assets" / "modelo_de_madurez" / "MM Adopcion-Tec-Pymes v2.0 validado expertos INIA.xlsx"
+    model_xlsx = root / "assets" / "modelo_de_madurez" / "MM Adopcion-Tec-Pymes v2.1 instrumento refinado.xlsx"
     weights_xlsx = root / "assets" / "modelo_de_madurez" / "Ponderaciones por KPI.xlsx"
-    q_docx = root / "assets" / "cuestionarios" / cfg["q_file"]
 
     m_sheets = read_xlsx(model_xlsx)
     w_sheets = read_xlsx(weights_xlsx)
     model_rows = m_sheets[pick_sheet(list(m_sheets.keys()), cfg["model_hint"])]
     weight_rows = w_sheets[pick_sheet(list(w_sheets.keys()), cfg["weight_hint"])]
-    questionnaire = read_docx_questions(q_docx)
+    questionnaire = get_questionnaire(profile)
 
     levels = []
     if len(model_rows) > 2:
@@ -310,31 +269,72 @@ def load_profile_data(root: Path, profile: str, language: str = "es") -> dict[st
             }
         )
 
-    total = min(len(questionnaire), len(parsed_model))
+    model_by_kpi: dict[str, dict[str, object]] = {}
+    for qm in parsed_model:
+        key = norm(str(qm["kpi"]))
+        if key in model_by_kpi:
+            raise RuntimeError(f"duplicate KPI in maturity model: {qm['kpi']}")
+        model_by_kpi[key] = qm
+
+    question_numbers = [int(q["number"]) for q in questionnaire]
+    expected_numbers = list(range(1, len(questionnaire) + 1))
+    if sorted(question_numbers) != expected_numbers:
+        raise RuntimeError("questionnaire numbers must be unique and consecutive")
+
+    questionnaire_kpis = {norm(str(q["kpi"])) for q in questionnaire}
+    model_kpis = set(model_by_kpi)
+    if questionnaire_kpis != model_kpis:
+        missing_questions = sorted(model_kpis - questionnaire_kpis)
+        missing_model = sorted(questionnaire_kpis - model_kpis)
+        raise RuntimeError(
+            "questionnaire/model KPI mismatch: "
+            f"missing questions={missing_questions}; missing model rows={missing_model}"
+        )
+
     questions = []
-    for i in range(total):
-        qm = parsed_model[i]
-        qd = questionnaire[i]
+    for qd in sorted(questionnaire, key=lambda item: int(item["number"])):
+        qm = model_by_kpi[norm(str(qd["kpi"]))]
         key = (norm(qm["domain"]), norm(qm["kda"]), norm(qm["kpi"]))
         weight = weights.get(key, 1.0)
-        raw_options = [str(o).strip() for o in qd["options"] if str(o).strip()]
-        options = [localize_option_text(o, language=language) for o in raw_options]
         available_levels = list(qm["available_levels"])
-        if len(options) == len(available_levels):
-            mapping = available_levels
-        else:
-            mapping = [min(idx + 1, len(qm["level_labels"])) for idx in range(len(options))]
+        option_language = "en" if str(language).lower() == "en" else "es"
+        raw_choices = qd.get("choices", [])
+        if not isinstance(raw_choices, list):
+            raise RuntimeError(f"invalid choices for KPI: {qm['kpi']}")
+
+        options: list[str] = []
+        mapping: list[int] = []
+        for choice in raw_choices:
+            if not isinstance(choice, dict):
+                raise RuntimeError(f"invalid choice for KPI: {qm['kpi']}")
+            text = str(choice.get(option_language, "")).strip()
+            level = int(choice.get("level"))
+            if not text:
+                raise RuntimeError(f"empty questionnaire choice for KPI: {qm['kpi']}")
+            if level not in available_levels:
+                raise RuntimeError(f"invalid maturity level {level} for KPI: {qm['kpi']}")
+            options.append(text)
+            mapping.append(level)
+
+        if mapping != available_levels:
+            raise RuntimeError(
+                f"questionnaire levels do not match the maturity model for KPI: {qm['kpi']}"
+            )
+
         questions.append(
             {
-                "number": i + 1,
+                "number": int(qd["number"]),
                 "domain": qm["domain"],
                 "kda": qm["kda"],
                 "kpi": qm["kpi"],
                 "weight": weight,
-                "prompt": localize_question_prompt(str(qd["prompt"]), i + 1, language=language),
+                "prompt": str(qd[f"prompt_{option_language}"]),
                 "options": options,
                 "level_labels": qm["level_labels"],
                 "level_texts": qm["level_texts"],
+                "level_option_texts": {
+                    level: option for option, level in zip(options, mapping)
+                },
                 "available_levels": available_levels,
                 "mapping": mapping,
             }
@@ -589,6 +589,9 @@ def build_roadmap(
     domain_current: dict[str, list[tuple[float, float]]] = defaultdict(list)
     domain_target: dict[str, list[tuple[float, float]]] = defaultdict(list)
     kpi_results = []
+    # This analytical view preserves every questionnaire KPI. `kpi_results`
+    # remains the gap-only collection consumed by the roadmap and PDF exports.
+    kpi_assessment_results = []
     candidate_entries: list[dict[str, object]] = []
     required_transition_keys: list[str] = []
     unmatched_required_transitions: list[dict[str, object]] = []
@@ -608,27 +611,53 @@ def build_roadmap(
         available_levels = [int(level) for level in q.get("available_levels", [])]
         if not available_levels:
             available_levels = list(range(1, len(labels) + 1))
+        domain_localized = localize_domain(str(q["domain"]), language=language)
+        kda_localized = localize_kda(str(q["kda"]), language=language)
+        kpi_localized = localize_kpi(str(q["kpi"]), language=language)
         current = mapping[opt - 1] if mapping else min(opt, available_levels[-1])
         current = max(available_levels[0], min(current, available_levels[-1]))
         target_candidates = [level for level in available_levels if level <= target_level]
         target = target_candidates[-1] if target_candidates else available_levels[0]
-        domain_localized = localize_domain(str(q["domain"]), language=language)
-        kda_localized = localize_kda(str(q["kda"]), language=language)
-        kpi_localized = localize_kpi(str(q["kpi"]), language=language)
 
         domain_current[domain_localized].append((float(current), float(q["weight"])))
         domain_target[domain_localized].append((float(target), float(q["weight"])))
 
-        if target <= current:
-            continue
-
         current_position = available_levels.index(current)
         target_position = available_levels.index(target)
-        gap = target_position - current_position
+        gap = max(target_position - current_position, 0)
         priority = round(gap * float(q["weight"]), 4)
         c_label = labels[current - 1]
         t_label = labels[target - 1]
+        effective_target = available_levels[max(current_position, target_position)]
+
+        kpi_assessment_results.append(
+            {
+                "question_number": n,
+                "domain": domain_localized,
+                "kda": kda_localized,
+                "kpi": kpi_localized,
+                "weight": q["weight"],
+                "available_levels": available_levels,
+                "selected_option_index": opt,
+                "selected_level": current,
+                "target_level": target,
+                "effective_target_level": effective_target,
+                "gap": gap,
+                "priority": priority,
+            }
+        )
+
+        if gap == 0:
+            continue
+
         transition = f"{c_label}->{t_label}"
+        level_option_texts = q.get("level_option_texts", {})
+        if str(language).lower() == "en" and isinstance(level_option_texts, dict):
+            current_description = str(level_option_texts.get(current, ""))
+            target_description = str(level_option_texts.get(target, ""))
+        else:
+            current_description = texts[current - 1] if current - 1 < len(texts) else ""
+            target_description = texts[target - 1] if target - 1 < len(texts) else ""
 
         kpi_results.append(
             {
@@ -644,8 +673,8 @@ def build_roadmap(
                 "gap": gap,
                 "priority": priority,
                 "selected_option_text": options[opt - 1],
-                "current_description": _localize_level_description(texts[current - 1] if current - 1 < len(texts) else "", language),
-                "target_description": _localize_level_description(texts[target - 1] if target - 1 < len(texts) else "", language),
+                "current_description": current_description,
+                "target_description": target_description,
             }
         )
 
@@ -784,10 +813,12 @@ def build_roadmap(
         "company": {"name": company_name, "rut": company_rut, "email": company_email, "company_type": profile["label"]},
         "result": {
             "timestamp": datetime.now().isoformat(timespec="seconds"),
+            "questionnaire_instrument_version": INSTRUMENT_VERSION,
             "target_level_index": target_level,
             "current_score": round(current_score, 4),
             "target_score": round(target_score, 4),
             "kpi_results": kpi_results,
+            "kpi_assessment_results": kpi_assessment_results,
             "domain_results": domain_results,
             "roadmap_entries": roadmap_entries,
             "traceability_entries": traceability_entries,

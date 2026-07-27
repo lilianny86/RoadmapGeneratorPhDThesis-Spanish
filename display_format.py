@@ -46,3 +46,8 @@ def format_clp(value: object, unavailable: str) -> str:
     formatted = f"{amount:,.2f}"
     localized = formatted.replace(",", "_").replace(".", ",").replace("_", ".")
     return f"CLP $ {localized}"
+
+
+def format_timestamp(value: object) -> str:
+    """Render ISO-like timestamps in a form intended for people."""
+    return str(value or "").strip().replace("T", " ", 1)

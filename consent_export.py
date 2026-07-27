@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from pdf_export import PALETTE as PALETTE_ES
 from pdf_export import SimplePdf as SpanishPdf
@@ -9,7 +11,7 @@ from pdf_export_en import PALETTE as PALETTE_EN
 from pdf_export_en import SimplePdf as EnglishPdf
 
 
-CONSENT_VERSION = "RoGen-IC-v1.0"
+CONSENT_VERSION = "RoGen-IC-v1.2"
 THESIS_TITLE_ES = "RoGen: Un marco de apoyo a la toma de decisiones, basado en la madurez, para la adopción de tecnología en pymes agrícolas"
 THESIS_TITLE_EN = "RoGen: A maturity-based decision-support framework for technology adoption in agricultural SMEs"
 RESEARCHER_NAME = "Lilianny Marrero"
@@ -104,6 +106,7 @@ def build_consent_record(
         "consent_version": CONSENT_VERSION,
         "language": selected_language,
         "accepted_at": str(accepted_at),
+        "issued_at": datetime.now(ZoneInfo("America/Santiago")).isoformat(timespec="seconds"),
         "acceptance_method": "checkbox",
         "acceptance_statement": consent_acceptance_statement(selected_language),
         "participant_email": str(participant_email),
@@ -112,7 +115,7 @@ def build_consent_record(
         "researcher_name": RESEARCHER_NAME,
         "university": UNIVERSITY_NAME_EN if selected_language == "en" else UNIVERSITY_NAME_ES,
         "contact_email": str(contact_email),
-        "interviewer_signature_status": "pending",
+        "document_issuance_method": "system_generated",
     }
 
 
@@ -124,28 +127,34 @@ def export_consent_pdf(record: dict[str, Any], output_path: Path) -> None:
         title = "INFORMED CONSENT"
         subtitle = f"RoGen doctoral thesis | Version {record.get('consent_version', CONSENT_VERSION)}"
         acceptance_title = "Electronic acceptance record"
-        signature_title = "Acceptance and interviewer confirmation"
+        issuance_title = "Acceptance and issuance record"
         participant_label = "Participant contact email"
         company_label = "Company"
         rut_label = "Business RUT"
         accepted_label = "Acceptance date and time"
+        issued_label = "Issue date and time"
         identifier_label = "Consent identifier"
         participant_signature = "Participant: electronic acceptance registered through the informed-consent checkbox."
-        interviewer_signature = f"Interviewer: {RESEARCHER_NAME}. Digital signature pending incorporation."
+        issuance_statement = "This record was generated automatically by RoGen to document the participant's electronic acceptance."
+        researcher_label = "Responsible researcher"
+        university_label = "University"
     else:
         doc = SpanishPdf()
         palette = PALETTE_ES
         title = "CONSENTIMIENTO INFORMADO"
         subtitle = f"Tesis doctoral RoGen | Versión {record.get('consent_version', CONSENT_VERSION)}"
         acceptance_title = "Registro de aceptación electrónica"
-        signature_title = "Aceptación y constancia de entrevistadora"
+        issuance_title = "Aceptación y constancia de emisión"
         participant_label = "Correo de contacto de participante"
         company_label = "Empresa"
         rut_label = "RUT de empresa"
         accepted_label = "Fecha y hora de aceptación"
+        issued_label = "Fecha y hora de emisión"
         identifier_label = "Identificador de consentimiento"
         participant_signature = "Participante: aceptación electrónica registrada mediante la casilla de consentimiento informado."
-        interviewer_signature = f"Entrevistadora: {RESEARCHER_NAME}. Firma digital pendiente de incorporación."
+        issuance_statement = "Este comprobante fue generado automáticamente por RoGen para registrar la aceptación electrónica del participante."
+        researcher_label = "Investigadora responsable"
+        university_label = "Universidad"
 
     doc.add_banner(title, subtitle)
     for section_title, paragraph in consent_sections(language, str(record.get("contact_email", ""))):
@@ -160,7 +169,11 @@ def export_consent_pdf(record: dict[str, Any], output_path: Path) -> None:
     doc.add_text(f"{accepted_label}: {record.get('accepted_at', '')}", size=9.8)
     doc.add_text(f"{identifier_label}: {record.get('consent_id', '')}", size=9.8)
 
-    doc.add_section_header(signature_title, accent=palette["forest"])
+    doc.add_page_break()
+    doc.add_section_header(issuance_title, accent=palette["forest"])
     doc.add_text(participant_signature, size=10.0, gap_after=6.0)
-    doc.add_text(interviewer_signature, size=10.0)
+    doc.add_text(issuance_statement, size=10.0)
+    doc.add_text(f"{researcher_label}: {record.get('researcher_name', RESEARCHER_NAME)}", size=10.0)
+    doc.add_text(f"{university_label}: {record.get('university', '')}", size=10.0)
+    doc.add_text(f"{issued_label}: {record.get('issued_at', '')}", size=10.0)
     doc.save(output_path)

@@ -7,8 +7,8 @@ from io import BytesIO
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
-from costing import estimate_cost_clp, horizon_months, is_monthly_subscription
-from display_format import format_clp, format_decimal, format_integer, format_percentage, to_float
+from costing import estimate_cost_clp, is_monthly_subscription
+from display_format import format_clp, format_decimal, format_integer, format_percentage, format_timestamp, to_float
 
 PALETTE = {
     "forest": (0.12, 0.34, 0.24),
@@ -343,7 +343,7 @@ def _entry_price_label(row: dict[str, object], unavailable: str = "No confirmado
         if is_monthly_subscription(row):
             total = _entry_price_amount(row)
             if total is not None:
-                return f"{_fmt_clp(amount)}/mes x {format_integer(horizon_months(row))} meses = {_fmt_clp(total)}"
+                return _fmt_clp(total)
         if min_amount is not None and max_amount is not None and min_amount != max_amount:
             return f"{_fmt_clp(min_amount)} - {_fmt_clp(max_amount)}"
         return _fmt_clp(amount)
@@ -637,11 +637,15 @@ class SimplePdf:
             )
 
         subtitle_clean = self._latin1(subtitle)
+        subtitle_width = usable_width * 0.82
         subtitle_size = 11.0
-        subtitle_lines = self._wrap_by_width(subtitle_clean, max_width=usable_width, size=subtitle_size, bold=False)
+        subtitle_lines = self._wrap_by_width(subtitle_clean, max_width=subtitle_width, size=subtitle_size, bold=False)
         if len(subtitle_lines) > 2:
             subtitle_size = 10.0
-            subtitle_lines = self._wrap_by_width(subtitle_clean, max_width=usable_width, size=subtitle_size, bold=False)
+            subtitle_lines = self._wrap_by_width(subtitle_clean, max_width=subtitle_width, size=subtitle_size, bold=False)
+        if len(subtitle_lines) > 2:
+            subtitle_size = 9.0
+            subtitle_lines = self._wrap_by_width(subtitle_clean, max_width=subtitle_width, size=subtitle_size, bold=False)
         subtitle_lines = subtitle_lines[:2]
 
         subtitle_line_h = subtitle_size * 1.15
@@ -813,7 +817,7 @@ def _render_friendly_summary(
         width=card_w,
         title="Brecha total",
         value=format_decimal(gap_total),
-        note="objetivo - actual",
+        note="Objetivo - actual",
     )
     _metric_card(
         doc,
@@ -822,7 +826,7 @@ def _render_friendly_summary(
         width=card_w,
         title="Avance a la meta",
         value=format_percentage(_progress_to_target_pct(current_score, target_score)),
-        note="actual / objetivo",
+        note="Actual / objetivo",
     )
     doc.current_y = card_top - 84
 
@@ -1684,7 +1688,7 @@ def export_technical_pdf(payload: dict[str, object], output_path: Path) -> None:
 
     doc.add_banner(
         "ROADMAP TÉCNICO DE MADUREZ",
-        f"{company.get('name', '')} | {company.get('company_type', '')} | {result.get('timestamp', '')}",
+        f"{company.get('name', '')} | {company.get('company_type', '')} | {format_timestamp(result.get('timestamp', ''))}",
     )
 
     card_top = doc.current_y
@@ -1721,7 +1725,7 @@ def export_technical_pdf(payload: dict[str, object], output_path: Path) -> None:
         width=card_w,
         title="Brecha total",
         value=format_decimal(to_float(result.get("target_score", 0)) - to_float(result.get("current_score", 0))),
-        note="objetivo - actual",
+        note="Objetivo - actual",
     )
     _metric_card(
         doc,
@@ -1730,7 +1734,7 @@ def export_technical_pdf(payload: dict[str, object], output_path: Path) -> None:
         width=card_w,
         title="Avance a la meta",
         value=format_percentage(_progress_to_target_pct(to_float(result.get("current_score", 0)), to_float(result.get("target_score", 0)))),
-        note="actual / objetivo",
+        note="Actual / objetivo",
     )
     doc.current_y = card_top - 84
 
@@ -1836,8 +1840,8 @@ def export_friendly_pdf(payload: dict[str, object], output_path: Path) -> None:
 
     doc = SimplePdf()
     doc.add_banner(
-        "ROADMAP CUSTOMIZADO DE MEJORA TECNOLÓGICA",
-        f"{company.get('name', '')} | {company.get('company_type', '')} | {result.get('timestamp', '')}",
+        "ROADMAP DE MEJORA TECNOLÓGICA",
+        f"{company.get('name', '')} | {company.get('company_type', '')} | {format_timestamp(result.get('timestamp', ''))}",
     )
     _render_friendly_summary(
         doc,

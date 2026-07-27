@@ -9,5 +9,9 @@ outputs/
 __pycache__/
 *.pyc
 .tmp_pyc/
+node_modules/
+.codex_artifact/
+*.inspect.ndjson
 # Respaldos locales de catálogos Excel
 assets/roadmap/*_backup_*.xlsx
+tmp/
