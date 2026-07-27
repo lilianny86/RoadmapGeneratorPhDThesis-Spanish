@@ -817,7 +817,7 @@ def _render_friendly_summary(
         width=card_w,
         title="Brecha total",
         value=format_decimal(gap_total),
-        note="Objetivo - Actual",
+        note="Actual / Objetivo",
     )
     _metric_card(
         doc,
@@ -1725,7 +1725,7 @@ def export_technical_pdf(payload: dict[str, object], output_path: Path) -> None:
         width=card_w,
         title="Brecha total",
         value=format_decimal(to_float(result.get("target_score", 0)) - to_float(result.get("current_score", 0))),
-        note="Objetivo - Actual",
+        note="Actual / Objetivo",
     )
     _metric_card(
         doc,
