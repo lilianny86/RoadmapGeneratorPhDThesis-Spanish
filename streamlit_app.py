@@ -1841,6 +1841,10 @@ html {
   line-height: 1.16;
 }
 
+#rogen-questionnaire-anchor {
+  scroll-margin-top: 1rem;
+}
+
 [class*="st-key-question_card_"] {
   margin: 0.75rem 0 !important;
   padding: 1rem 1.1rem 0.9rem !important;
@@ -2504,6 +2508,35 @@ setTimeout(smoothScrollTop, 360);
     st.session_state["scroll_to_top_result"] = False
 
 
+def _scroll_to_questionnaire_once() -> None:
+    if not bool(st.session_state.get("scroll_to_questionnaire", False)):
+        return
+
+    nonce = int(st.session_state.get("scroll_to_questionnaire_nonce", 0))
+    js_block = """
+<script>
+const scrollToQuestionnaire = () => {
+  try {
+    const frame = window.parent;
+    const anchor = frame.document.getElementById("rogen-questionnaire-anchor");
+    if (anchor && anchor.scrollIntoView) {
+      anchor.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  } catch (_) {}
+};
+setTimeout(scrollToQuestionnaire, 30);
+setTimeout(scrollToQuestionnaire, 160);
+setTimeout(scrollToQuestionnaire, 360);
+</script>
+<div style="display:none">questionnaire-scroll-nonce-__NONCE__</div>
+    """
+    st.session_state["scroll_to_questionnaire"] = False
+    components.html(
+        js_block.replace("__NONCE__", str(nonce)),
+        height=0,
+    )
+
+
 def _show_generation_overlay(slot: st.delta_generator.DeltaGenerator, language: str) -> None:
     title = html.escape(_t(language, "generating_overlay_title"))
     text = html.escape(_t(language, "generating_overlay_text"))
@@ -2579,7 +2612,9 @@ def main() -> None:
     max_level = max((len(q.get("level_labels", [])) for q in questions), default=5)
     ui_cfg = _render_sidebar(profile, max_level=max_level, language=language, company_type=company_type)
     missing_required = _missing_required_company_fields(company_type, ui_cfg, language)
+    setup_complete_key = f"setup_complete_{company_type}"
     if missing_required:
+        st.session_state[setup_complete_key] = False
         warning_text = html.escape(_t(language, "missing_required_warning"))
         missing_text = html.escape(_t(language, "missing_prefix") + " " + ", ".join(missing_required))
         st.markdown(
@@ -2587,6 +2622,11 @@ def main() -> None:
             unsafe_allow_html=True,
         )
         return
+
+    if not bool(st.session_state.get(setup_complete_key, False)):
+        st.session_state[setup_complete_key] = True
+        st.session_state["scroll_to_questionnaire"] = True
+        st.session_state["scroll_to_questionnaire_nonce"] = int(st.session_state.get("scroll_to_questionnaire_nonce", 0)) + 1
 
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -2620,6 +2660,7 @@ def main() -> None:
             unsafe_allow_html=True,
         )
 
+    st.markdown("<div id='rogen-questionnaire-anchor'></div>", unsafe_allow_html=True)
     st.subheader(_t(language, "questionnaire"))
     st.caption(_t(language, "questionnaire_instruction"))
     for q in sorted(questions, key=lambda row: int(row.get("number", 0))):
@@ -2655,6 +2696,8 @@ def main() -> None:
             use_container_width=True,
             disabled=bool(missing_questions),
         )
+
+    _scroll_to_questionnaire_once()
 
     if generate_clicked:
         overlay_slot = st.empty()
