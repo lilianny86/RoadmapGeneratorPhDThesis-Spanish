@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import hmac
 import io
 import re
 from datetime import datetime
@@ -87,9 +88,28 @@ def _case_id(*, generated_at: datetime, company_type: str, payload: dict[str, ob
     return f"RGN-{generated_at.strftime('%Y%m%d')}-{digest}"
 
 
+def build_stable_participant_code(company_rut: object, *, secret: str) -> str:
+    """Return a stable, non-reversible research code from the company's RUT."""
+    normalized_rut = re.sub(r"[^0-9Kk]", "", str(company_rut or "")).upper()
+    if len(normalized_rut) < 2:
+        raise ValueError("A valid company RUT is required to create the statistical participant code.")
+
+    secret_value = str(secret or "").strip()
+    if not secret_value:
+        raise ValueError("ROADMAP_PARTICIPANT_SALT is required for stable statistical participant codes.")
+
+    digest = hmac.new(
+        secret_value.encode("utf-8"),
+        normalized_rut.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest().upper()[:16]
+    return f"RGN-P-{digest}"
+
+
 SUMMARY_VARIABLES = [
     ("generated_at", "Fecha y hora de generación", "Momento en que RoGen generó el roadmap.", "AAAA-MM-DDTHH:MM:SS"),
     ("case_id", "ID anónimo del caso", "Identificador técnico no derivado de nombre, RUT ni correo.", "RGN-AAAAMMDD-XXXXXXXX"),
+    ("participant_code", "Código seudonimizado estable de empresa", "Identificador estable derivado del RUT normalizado mediante HMAC con una clave privada. Permite vincular mediciones de una misma empresa sin exponer su identidad.", "RGN-P-XXXXXXXXXXXXXXXX"),
     ("company_size", "Tamaño de empresa", "Tipo de empresa seleccionado en la aplicación.", "Pequeña empresa o Mediana empresa"),
     ("budget_range", "Rango de presupuesto seleccionado", "Texto del rango anual elegido por la persona entrevistada.", "Texto en CLP"),
     ("budget_range_code", "Código del rango de presupuesto", "Código estable del rango para análisis estadístico.", "Texto"),
@@ -132,6 +152,7 @@ SUMMARY_VARIABLES = [
 KPI_DETAIL_VARIABLES = [
     ("generated_at", "Fecha y hora de generación", "Momento en que RoGen generó el roadmap.", "AAAA-MM-DDTHH:MM:SS"),
     ("case_id", "ID anónimo del caso", "Identificador técnico del caso para vincularlo con el resumen.", "RGN-AAAAMMDD-XXXXXXXX"),
+    ("participant_code", "Código seudonimizado estable de empresa", "Identificador estable que permite vincular mediciones de una misma empresa sin exponer su identidad.", "RGN-P-XXXXXXXXXXXXXXXX"),
     ("company_size", "Tamaño de empresa", "Tipo de empresa seleccionado en la aplicación.", "Pequeña empresa o Mediana empresa"),
     ("budget_range", "Rango de presupuesto seleccionado", "Texto del rango anual elegido por la persona entrevistada.", "Texto en CLP"),
     ("budget_range_code", "Código del rango de presupuesto", "Código estable del rango para análisis estadístico.", "Texto"),
@@ -221,6 +242,7 @@ def build_statistical_record(
     *,
     company_type: str,
     budget_range: str,
+    participant_code: str,
     generated_at: datetime | None = None,
 ) -> dict[str, object]:
     generated_at = generated_at or datetime.now()
@@ -267,6 +289,7 @@ def build_statistical_record(
     return {
         "generated_at": generated_at.isoformat(timespec="seconds"),
         "case_id": _case_id(generated_at=generated_at, company_type=company_type, payload=payload),
+        "participant_code": str(participant_code).strip(),
         "company_size": company_type,
         "budget_range": BUDGET_RANGE_LABEL_ES.get(str(budget_range or ""), str(budget_range or "")),
         "budget_range_code": str(budget_range or ""),
@@ -328,6 +351,7 @@ def build_kpi_statistical_records(payload: dict[str, object], record: dict[str, 
             {
                 "generated_at": record.get("generated_at", ""),
                 "case_id": record.get("case_id", ""),
+                "participant_code": record.get("participant_code", ""),
                 "company_size": record.get("company_size", ""),
                 "budget_range": record.get("budget_range", ""),
                 "budget_range_code": record.get("budget_range_code", ""),

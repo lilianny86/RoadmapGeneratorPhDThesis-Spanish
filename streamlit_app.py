@@ -23,6 +23,7 @@ from consent_export import CONSENT_VERSION, build_consent_record, consent_sectio
 from stats_export import (
     build_kpi_statistical_csv_bytes,
     build_kpi_statistical_records,
+    build_stable_participant_code,
     build_statistical_csv_bytes,
     build_statistical_data_guide_csv_bytes,
     build_statistical_record,
@@ -2153,6 +2154,17 @@ def _stats_recipient_from_config(cfg: object) -> str:
     return recipient
 
 
+def _participant_pseudonym_secret() -> str:
+    secret = _read_streamlit_secret_value(
+        ENV_KEYS["participant_salt"],
+        "participant_salt",
+        "ROADMAP_PARTICIPANT_SALT",
+    )
+    if secret:
+        return secret
+    return os.getenv(ENV_KEYS["participant_salt"], "").strip()
+
+
 def _statistical_email_body(
     record: dict[str, object],
     payload: dict[str, object],
@@ -2180,6 +2192,7 @@ def _statistical_email_body(
             "This internal message contains identifiable research data. Do not forward it outside the research team.\n\n"
             "CASE LINKAGE\n"
             f"Case ID: {record.get('case_id', '')}\n"
+            f"Stable company code: {record.get('participant_code', '')}\n"
             f"Generated at: {format_timestamp(record.get('generated_at', ''))}\n"
             f"Company: {company_name}\n"
             f"Business RUT: {company_rut}\n"
@@ -2215,6 +2228,7 @@ def _statistical_email_body(
         "Este correo interno contiene datos identificables de investigación. No debe reenviarse fuera del equipo investigador.\n\n"
         "VINCULACIÓN DEL CASO\n"
         f"ID de caso: {record.get('case_id', '')}\n"
+        f"Código estable de empresa: {record.get('participant_code', '')}\n"
         f"Generado el: {format_timestamp(record.get('generated_at', ''))}\n"
         f"Empresa: {company_name}\n"
         f"RUT empresa: {company_rut}\n"
@@ -2759,6 +2773,10 @@ def main() -> None:
                         payload_es,
                         company_type=company_type,
                         budget_range=str(ui_cfg.get("budget_range", "")),
+                        participant_code=build_stable_participant_code(
+                            ui_cfg.get("company_rut", ""),
+                            secret=_participant_pseudonym_secret(),
+                        ),
                         generated_at=generated_at,
                     )
                     stats_summary_csv = build_statistical_csv_bytes(stats_record)

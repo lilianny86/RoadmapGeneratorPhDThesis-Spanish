@@ -14,6 +14,7 @@ ENV_KEYS = {
     "smtp_password": "ROADMAP_SMTP_PASSWORD",
     "smtp_from": "ROADMAP_SMTP_FROM",
     "smtp_to": "ROADMAP_SMTP_TO",
+    "participant_salt": "ROADMAP_PARTICIPANT_SALT",
 }
 
 PLACEHOLDER_MARKERS = {
@@ -143,4 +144,3 @@ def scan_hardcoded_secrets(root: Path) -> list[str]:
                     findings.append(f"{path}:{idx} -> posible secreto hardcodeado")
                     break
     return findings
-
