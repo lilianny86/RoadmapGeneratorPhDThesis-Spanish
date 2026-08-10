@@ -1047,7 +1047,9 @@ h1, h2, h3 {
   padding: 0;
   margin-top: 0.62rem;
   margin-bottom: 0.92rem;
-  max-width: 860px;
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
 }
 
 .app-intro-title {
