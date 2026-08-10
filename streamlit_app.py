@@ -1838,8 +1838,8 @@ html {
   line-height: 1.16;
 }
 
-#rogen-questionnaire-anchor {
-  scroll-margin-top: 1rem;
+#rogen-summary-anchor {
+  scroll-margin-top: 4.25rem;
 }
 
 [class*="st-key-question_card_"] {
@@ -2513,7 +2513,7 @@ def _scroll_to_questionnaire_once() -> None:
 <script>
 const scrollToQuestionnaire = () => {
   try {
-    const anchor = document.getElementById("rogen-questionnaire-anchor");
+    const anchor = document.getElementById("rogen-summary-anchor");
     if (anchor && anchor.scrollIntoView) {
       anchor.scrollIntoView({ behavior: "smooth", block: "start" });
     }
@@ -2623,6 +2623,7 @@ def main() -> None:
         st.session_state["scroll_to_questionnaire"] = True
         st.session_state["scroll_to_questionnaire_nonce"] = int(st.session_state.get("scroll_to_questionnaire_nonce", 0)) + 1
 
+    st.markdown("<div id='rogen-summary-anchor'></div>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns(3)
     with col1:
         st.markdown(
