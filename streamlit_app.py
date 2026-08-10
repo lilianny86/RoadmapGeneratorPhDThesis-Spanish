@@ -130,6 +130,9 @@ UI_TEXTS = {
         "missing_valid_rut": "RUT válido",
         "missing_email": "Correo",
         "missing_target_level": "Nivel objetivo (seleccione un nivel superior al inicial)",
+        "missing_budget": "Presupuesto para mejoras",
+        "missing_answers_warning": "Responde todas las preguntas antes de generar el roadmap.",
+        "missing_answers_prefix": "Preguntas pendientes:",
         "smtp_missing_email": "Por favor ingresa un correo válido en Datos de la empresa (campo Correo).",
         "smtp_error_auth": "Error de autenticación SMTP. Verifica credenciales y App Password en Secrets.",
         "smtp_error_config": "Configuración SMTP incompleta o inválida en Secrets.",
@@ -235,6 +238,9 @@ UI_TEXTS = {
         "missing_valid_rut": "Valid RUT",
         "missing_email": "Email",
         "missing_target_level": "Target level (select a level above the initial level)",
+        "missing_budget": "Improvement budget",
+        "missing_answers_warning": "Answer every question before generating the roadmap.",
+        "missing_answers_prefix": "Unanswered questions:",
         "smtp_missing_email": "Please provide a valid email address in Company Data (Email field).",
         "smtp_error_auth": "SMTP authentication error. Check credentials and App Password in Secrets.",
         "smtp_error_config": "Incomplete or invalid SMTP configuration in Secrets.",
@@ -1905,7 +1911,7 @@ def _render_sidebar(profile: dict[str, object], max_level: int, language: str, c
     budget_total_key = st.sidebar.radio(
         _t(language, "improvement_budget"),
         options=budget_options,
-        index=min(1, len(budget_options) - 1),
+        index=None,
         format_func=lambda key: _budget_radio_label(key, budget_labels),
         key=f"budget_total_{company_type}",
     )
@@ -1923,9 +1929,9 @@ def _render_sidebar(profile: dict[str, object], max_level: int, language: str, c
         "company_rut": company_rut,
         "company_email": company_email,
         "target_level": target_level,
-        "budget_total_label": budget_labels.get(str(budget_total_key), str(budget_total_key)),
-        "budget_total_clp": BUDGET_TO_CLP[str(budget_total_key)],
-        "budget_range": str(budget_total_key),
+        "budget_total_label": budget_labels.get(str(budget_total_key), ""),
+        "budget_total_clp": BUDGET_TO_CLP.get(str(budget_total_key)),
+        "budget_range": str(budget_total_key or ""),
         "profile_label": localized_profile_label,
     }
 
@@ -1935,9 +1941,18 @@ def _collect_answers(company_type: str, questions: list[dict[str, Any]]) -> dict
     for q in questions:
         qnum = int(q["number"])
         key = f"q_{company_type}_{qnum}"
-        selected = int(st.session_state.get(key, 0))
-        answers[qnum] = selected + 1
+        selected = st.session_state.get(key)
+        if selected is not None:
+            answers[qnum] = int(selected) + 1
     return answers
+
+
+def _missing_question_numbers(company_type: str, questions: list[dict[str, Any]]) -> list[int]:
+    return [
+        int(question["number"])
+        for question in questions
+        if st.session_state.get(f"q_{company_type}_{int(question['number'])}") is None
+    ]
 
 
 def _build_overrides(ui_cfg: dict[str, object]) -> dict[str, Any]:
@@ -1962,6 +1977,8 @@ def _missing_required_company_fields(company_type: str, ui_cfg: dict[str, object
         missing.append(_t(language, "missing_email"))
     if int(ui_cfg.get("target_level", 1) or 1) <= 1:
         missing.append(_t(language, "missing_target_level"))
+    if not str(ui_cfg.get("budget_range", "")).strip():
+        missing.append(_t(language, "missing_budget"))
     return missing
 
 
@@ -2511,14 +2528,28 @@ def main() -> None:
             st.radio(
                 label=f"{_t(language, 'answer')} {qnum}",
                 options=list(range(len(options))),
+                index=None,
                 format_func=lambda i, rows=options: rows[i],
                 key=f"q_{company_type}_{qnum}",
                 label_visibility="collapsed",
             )
 
+    missing_questions = _missing_question_numbers(company_type, questions)
+    if missing_questions:
+        question_list = ", ".join(str(number) for number in missing_questions)
+        st.warning(
+            f"{_t(language, 'missing_answers_warning')} "
+            f"{_t(language, 'missing_answers_prefix')} {question_list}"
+        )
+
     generate_clicked = False
     with st.container(key="generate_action_bar"):
-        generate_clicked = st.button(_t(language, "generate"), type="primary", use_container_width=True)
+        generate_clicked = st.button(
+            _t(language, "generate"),
+            type="primary",
+            use_container_width=True,
+            disabled=bool(missing_questions),
+        )
 
     if generate_clicked:
         overlay_slot = st.empty()
