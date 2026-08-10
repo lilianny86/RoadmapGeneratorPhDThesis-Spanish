@@ -1085,7 +1085,7 @@ h1, h2, h3 {
   font-family: "Source Sans 3", sans-serif;
   font-size: 0.97rem;
   font-weight: 400;
-  line-height: 1.58;
+  line-height: 1.5;
   letter-spacing: 0.003em;
 }
 
@@ -1200,7 +1200,7 @@ h1, h2, h3 {
 
   .app-intro--academic p {
     font-size: 0.93rem;
-    line-height: 1.52;
+    line-height: 1.5;
     margin-bottom: 0.43rem;
   }
 
@@ -1270,7 +1270,7 @@ h1, h2, h3 {
 
   .app-intro--academic p {
     font-size: 0.86rem;
-    line-height: 1.44;
+    line-height: 1.5;
     margin-bottom: 0.34rem;
   }
 
