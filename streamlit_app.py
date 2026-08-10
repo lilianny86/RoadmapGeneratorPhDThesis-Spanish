@@ -386,13 +386,12 @@ def _apply_no_translate_guard(language: str) -> None:
     lang = _lang(language)
     nonce = datetime.now().strftime("%Y%m%d%H%M%S%f")
     try:
-        components.html(
+        st.html(
             f"""
 <script>
 (function () {{
   try {{
-    const doc = window.parent && window.parent.document;
-    if (!doc) return;
+    const doc = document;
 
     // Remove stale language switch nodes injected by older versions in the Streamlit header.
     doc.querySelectorAll('#rogen-header-lang-switch').forEach((el) => el.remove());
@@ -572,9 +571,7 @@ def _apply_no_translate_guard(language: str) -> None:
 </script>
 <div style="display:none" aria-hidden="true">{nonce}</div>
             """,
-            height=0,
-            width=0,
-            scrolling=False,
+            unsafe_allow_javascript=True,
         )
     except Exception:
         # This is a cosmetic browser guard; it must never prevent the assessment UI from rendering.
@@ -2476,8 +2473,7 @@ def _scroll_to_result_once() -> None:
 <script>
 const smoothScrollTop = () => {
   try {
-    const frame = window.parent;
-    const doc = frame.document;
+    const doc = document;
     const anchor = doc.getElementById("rogen-result-anchor");
     if (anchor && anchor.scrollIntoView) {
       anchor.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -2492,7 +2488,7 @@ const smoothScrollTop = () => {
       if (anchor && el.contains(anchor)) return;
       if (el.scrollTo) el.scrollTo({ top: Math.max((el.scrollTop || 0) - 8, 0), behavior: "smooth" });
     });
-    if (!anchor) frame.scrollTo({ top: 0, behavior: "smooth" });
+    if (!anchor) window.scrollTo({ top: 0, behavior: "smooth" });
   } catch (_) {}
 };
 setTimeout(smoothScrollTop, 30);
@@ -2501,9 +2497,9 @@ setTimeout(smoothScrollTop, 360);
 </script>
 <div style="display:none">scroll-nonce-__NONCE__</div>
     """
-    components.html(
+    st.html(
         js_block.replace("__NONCE__", str(nonce)),
-        height=0,
+        unsafe_allow_javascript=True,
     )
     st.session_state["scroll_to_top_result"] = False
 
@@ -2517,8 +2513,7 @@ def _scroll_to_questionnaire_once() -> None:
 <script>
 const scrollToQuestionnaire = () => {
   try {
-    const frame = window.parent;
-    const anchor = frame.document.getElementById("rogen-questionnaire-anchor");
+    const anchor = document.getElementById("rogen-questionnaire-anchor");
     if (anchor && anchor.scrollIntoView) {
       anchor.scrollIntoView({ behavior: "smooth", block: "start" });
     }
@@ -2531,9 +2526,9 @@ setTimeout(scrollToQuestionnaire, 360);
 <div style="display:none">questionnaire-scroll-nonce-__NONCE__</div>
     """
     st.session_state["scroll_to_questionnaire"] = False
-    components.html(
+    st.html(
         js_block.replace("__NONCE__", str(nonce)),
-        height=0,
+        unsafe_allow_javascript=True,
     )
 
 
