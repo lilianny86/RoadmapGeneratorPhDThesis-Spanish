@@ -27,7 +27,7 @@ from stats_export import (
     build_statistical_data_guide_csv_bytes,
     build_statistical_record,
 )
-from display_format import format_decimal, format_integer, to_float
+from display_format import format_clp, format_decimal, format_integer, format_timestamp, to_float
 from recommendation_engine import build_engine_config
 from roadmap_core import build_roadmap, load_profile_data, save_traceability_csv, save_traceability_json, save_txt
 from security_config import ENV_KEYS, load_security_config, validate_smtp_config
@@ -2147,10 +2147,106 @@ def _stats_recipient_from_config(cfg: object) -> str:
     return recipient
 
 
+def _statistical_email_body(
+    record: dict[str, object],
+    payload: dict[str, object],
+    consent_record: dict[str, object],
+    language: str,
+) -> str:
+    company = payload.get("company", {}) if isinstance(payload.get("company"), dict) else {}
+    selected_language = _lang(language)
+    company_name = str(company.get("name", "")).strip() or "-"
+    company_rut = str(company.get("rut", "")).strip() or "-"
+    company_email = str(company.get("email", "")).strip() or "-"
+    company_size = str(record.get("company_size", "")).strip()
+    size_label = {
+        "small": "Small-sized enterprise" if selected_language == "en" else "Pequeña empresa",
+        "medium": "Medium-sized enterprise" if selected_language == "en" else "Mediana empresa",
+    }.get(company_size, company_size or "-")
+    budget_label = _budget_labels(selected_language).get(
+        str(record.get("budget_range_code", "")),
+        str(record.get("budget_range", "")) or "-",
+    )
+    budget_usage = to_float(record.get("budget_utilization_ratio")) * 100
+
+    if selected_language == "en":
+        return (
+            "This internal message contains identifiable research data. Do not forward it outside the research team.\n\n"
+            "CASE LINKAGE\n"
+            f"Case ID: {record.get('case_id', '')}\n"
+            f"Generated at: {format_timestamp(record.get('generated_at', ''))}\n"
+            f"Company: {company_name}\n"
+            f"Business RUT: {company_rut}\n"
+            f"Participant email: {company_email}\n"
+            f"Company size: {size_label}\n\n"
+            "INFORMED CONSENT\n"
+            f"Consent ID: {consent_record.get('consent_id', '')}\n"
+            f"Consent version: {consent_record.get('consent_version', '')}\n"
+            f"Accepted at: {format_timestamp(consent_record.get('accepted_at', ''))}\n\n"
+            "ASSESSMENT SUMMARY\n"
+            f"Questionnaire version: {record.get('questionnaire_instrument_version', '')}\n"
+            f"Global target level: {format_integer(record.get('global_target_level', 0))}\n"
+            f"Current maturity score: {format_decimal(record.get('current_maturity_score', 0))}\n"
+            f"Target maturity score: {format_decimal(record.get('target_maturity_score', 0))}\n"
+            f"Maturity gap: {format_decimal(record.get('maturity_gap', 0))}\n"
+            f"KPIs assessed: {format_integer(record.get('questionnaire_kpis_total', 0))}\n"
+            f"KPIs with gap: {format_integer(record.get('kpis_with_gap', 0))}\n"
+            f"KPIs at or above target: {format_integer(record.get('kpis_at_or_above_target', 0))}\n\n"
+            "ROADMAP SUMMARY\n"
+            f"Selected budget range: {budget_label}\n"
+            f"Budget cap: {format_clp(record.get('budget_cap_clp'), 'Not available')}\n"
+            f"Budget used: {format_clp(record.get('engine_used_budget_clp'), 'Not available')} ({format_decimal(budget_usage)}%)\n"
+            f"Budget remaining: {format_clp(record.get('budget_remaining_clp'), 'Not available')}\n"
+            f"Selected recommendations: {format_integer(record.get('recommendations_total', 0))}\n"
+            f"Short / medium / long term: {format_integer(record.get('short_term_count', 0))} / {format_integer(record.get('medium_term_count', 0))} / {format_integer(record.get('long_term_count', 0))}\n"
+            f"Required / covered transitions: {format_integer(record.get('required_transitions_total', 0))} / {format_integer(record.get('covered_transitions_total', 0))}\n"
+            f"Recommendation engine version: {record.get('engine_version', '')}\n"
+            f"Catalog version: {record.get('catalog_schema_version', '')}\n\n"
+            "Attached files: pseudonymized statistical summary, KPI detail, and the variable guide."
+        )
+
+    return (
+        "Este correo interno contiene datos identificables de investigación. No debe reenviarse fuera del equipo investigador.\n\n"
+        "VINCULACIÓN DEL CASO\n"
+        f"ID de caso: {record.get('case_id', '')}\n"
+        f"Generado el: {format_timestamp(record.get('generated_at', ''))}\n"
+        f"Empresa: {company_name}\n"
+        f"RUT empresa: {company_rut}\n"
+        f"Correo de participante: {company_email}\n"
+        f"Tamaño de empresa: {size_label}\n\n"
+        "CONSENTIMIENTO INFORMADO\n"
+        f"ID de consentimiento: {consent_record.get('consent_id', '')}\n"
+        f"Versión de consentimiento: {consent_record.get('consent_version', '')}\n"
+        f"Aceptado el: {format_timestamp(consent_record.get('accepted_at', ''))}\n\n"
+        "RESUMEN DE LA EVALUACIÓN\n"
+        f"Versión del cuestionario: {record.get('questionnaire_instrument_version', '')}\n"
+        f"Nivel objetivo global: {format_integer(record.get('global_target_level', 0))}\n"
+        f"Puntaje de madurez actual: {format_decimal(record.get('current_maturity_score', 0))}\n"
+        f"Puntaje de madurez objetivo: {format_decimal(record.get('target_maturity_score', 0))}\n"
+        f"Brecha de madurez: {format_decimal(record.get('maturity_gap', 0))}\n"
+        f"KPI evaluados: {format_integer(record.get('questionnaire_kpis_total', 0))}\n"
+        f"KPI con brecha: {format_integer(record.get('kpis_with_gap', 0))}\n"
+        f"KPI en o sobre la meta: {format_integer(record.get('kpis_at_or_above_target', 0))}\n\n"
+        "RESUMEN DEL ROADMAP\n"
+        f"Rango de presupuesto seleccionado: {budget_label}\n"
+        f"Tope de presupuesto: {format_clp(record.get('budget_cap_clp'), 'No disponible')}\n"
+        f"Presupuesto usado: {format_clp(record.get('engine_used_budget_clp'), 'No disponible')} ({format_decimal(budget_usage)}%)\n"
+        f"Presupuesto remanente: {format_clp(record.get('budget_remaining_clp'), 'No disponible')}\n"
+        f"Recomendaciones seleccionadas: {format_integer(record.get('recommendations_total', 0))}\n"
+        f"Acciones corto / mediano / largo plazo: {format_integer(record.get('short_term_count', 0))} / {format_integer(record.get('medium_term_count', 0))} / {format_integer(record.get('long_term_count', 0))}\n"
+        f"Transiciones requeridas / cubiertas: {format_integer(record.get('required_transitions_total', 0))} / {format_integer(record.get('covered_transitions_total', 0))}\n"
+        f"Versión del motor de recomendaciones: {record.get('engine_version', '')}\n"
+        f"Versión del catálogo: {record.get('catalog_schema_version', '')}\n\n"
+        "Se adjuntan el resumen estadístico seudonimizado, el detalle por KPI y la guía de variables."
+    )
+
+
 def _send_statistical_csv_via_gmail(
     *,
     root: Path,
     record: dict[str, object],
+    payload: dict[str, object],
+    consent_record: dict[str, object],
     summary_csv_bytes: bytes,
     kpi_csv_bytes: bytes,
     guide_csv_bytes: bytes,
@@ -2172,25 +2268,14 @@ def _send_statistical_csv_via_gmail(
         raise RuntimeError("Missing ROADMAP_STATS_TO or ROADMAP_SMTP_USER for internal statistical export.")
 
     case_id = str(record.get("case_id", "rogen_case")).strip() or "rogen_case"
-    company_size_label = {"small": "Pequeña empresa", "medium": "Mediana empresa"}.get(
-        str(record.get("company_size", "")),
-        str(record.get("company_size", "")),
-    )
+    company = payload.get("company", {}) if isinstance(payload.get("company"), dict) else {}
+    company_name = str(company.get("name", "")).strip() or case_id
     msg = EmailMessage()
-    msg["Subject"] = f"RoGen | Registros estadísticos {case_id}"
+    subject_prefix = "RoGen | Statistical records" if _lang(language) == "en" else "RoGen | Registros estadísticos"
+    msg["Subject"] = f"{subject_prefix} | {company_name} | {case_id}"
     msg["From"] = cfg.smtp_from
     msg["To"] = recipient
-    msg.set_content(
-        "Se adjuntan tres archivos estadísticos internos generados por RoGen: "
-        "un resumen por roadmap, un detalle seudonimizado por KPI y una guía de variables en español. "
-        "Este mensaje es solo para trazabilidad de investigación y no se envía a la empresa evaluada.\n\n"
-        f"ID de caso: {case_id}\n"
-        f"Fecha de generación: {record.get('generated_at', '')}\n"
-        f"Tamaño de empresa: {company_size_label}\n"
-        f"Brecha de madurez: {record.get('maturity_gap', '')}\n"
-        f"Recomendaciones: {record.get('recommendations_total', '')}\n"
-        f"Uso del presupuesto: {record.get('budget_utilization_ratio', '')}\n"
-    )
+    msg.set_content(_statistical_email_body(record, payload, consent_record, language))
     msg.add_attachment(
         summary_csv_bytes,
         maintype="text",
@@ -2677,6 +2762,8 @@ def main() -> None:
                     _send_statistical_csv_via_gmail(
                         root=ROOT,
                         record=stats_record,
+                        payload=payload_es,
+                        consent_record=consent_record,
                         summary_csv_bytes=stats_summary_csv,
                         kpi_csv_bytes=stats_kpi_csv,
                         guide_csv_bytes=stats_guide_csv,
