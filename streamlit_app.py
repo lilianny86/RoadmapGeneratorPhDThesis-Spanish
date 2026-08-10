@@ -117,8 +117,10 @@ UI_TEXTS = {
         "download_en": "Descargar Roadmap PDF (EN)",
         "select_company_type": "Seleccione el tipo de empresa en el panel de la izquierda para continuar.",
         "intro_title": "¿Qué es RoGen y cómo comenzar?",
-        "intro_p1": "RoGen genera automáticamente una hoja de ruta personalizada para PyMEs agrícolas a partir del perfil de la empresa y las respuestas del cuestionario. Convierte los hallazgos del diagnóstico en acciones priorizadas según impacto, urgencia y horizonte temporal. La aplicación progresiva de esta ruta favorece mejoras medibles en productividad, trazabilidad, gestión de recursos, cumplimiento normativo y capacidades de digitalización.",
-        "intro_p2": "Para comenzar, despliegue la barra lateral izquierda y seleccione el tamaño de empresa (Pequeña o Mediana). Complete los campos obligatorios, defina el nivel objetivo (situación futura deseada) y elija el rango de presupuesto que mejor represente su contexto. Luego responda el cuestionario según la situación actual de su empresa, no la deseada. Con esta información, RoGen prioriza acciones factibles y genera un roadmap por etapas, listo para implementar.",
+        "intro_p1": "RoGen es una herramienta de apoyo a la toma de decisiones para pequeñas y medianas empresas agrícolas. Permite conocer el estado actual de adopción tecnológica de la empresa mediante un conjunto de indicadores de madurez previamente definidos y, a partir de este diagnóstico, generar una hoja de ruta personalizada para avanzar de manera gradual.",
+        "intro_p2": "La hoja de ruta identifica las principales brechas de la empresa y propone acciones priorizadas de acuerdo con su nivel actual, la meta de madurez seleccionada, el horizonte de implementación y el presupuesto disponible. Las recomendaciones se organizan en etapas de corto, mediano y largo plazo, facilitando una implementación progresiva y acorde con la realidad de cada empresa.",
+        "intro_p3": "Para comenzar, complete los campos obligatorios del panel lateral con los datos de la empresa. Luego, defina el nivel de madurez que desea alcanzar y seleccione el presupuesto anual disponible para realizar mejoras. Finalmente, responda cada pregunta considerando la situación actual de la empresa y sus prácticas vigentes, no la situación que se espera alcanzar en el futuro.",
+        "intro_p4": "Una vez finalizado el cuestionario, RoGen genera una hoja de ruta con las acciones recomendadas y la envía al correo electrónico registrado, junto con el comprobante de consentimiento informado.",
         "cannot_load_profile": "No se pudo cargar el perfil",
         "roadmap_error": "No se pudo generar el roadmap",
         "language_button": "English",
@@ -225,8 +227,10 @@ UI_TEXTS = {
         "download_en": "Download PDF Roadmap (EN)",
         "select_company_type": "Select a company size to continue.",
         "intro_title": "What is RoGen and how do I get started?",
-        "intro_p1": "RoGen is an automated generator of customized roadmaps that uses company characteristics and questionnaire responses as input. RoGen converts diagnostic results into a structured roadmap tailored for agricultural small and medium-sized enterprises (SMEs). The assessment process identifies maturity gaps and organizes solutions according to priority, impact, and time horizon. Progressive implementation enables measurable improvements in productivity, traceability, resource management, regulatory compliance, and digital capabilities.",
-        "intro_p2": "To begin, open the left sidebar and select the company size category (Small company or Medium-sized company). Complete the required fields, choose the target level that represents the desired future state, and select the budget range that best reflects your company’s context. Respond to the questionnaire based on the current situation rather than the desired state. Based on this information, RoGen prioritizes feasible actions and generates a phased, implementable roadmap.",
+        "intro_p1": "RoGen is a decision-support tool for agricultural small and medium-sized enterprises. It helps identify the company’s current state of technology adoption through a set of previously defined maturity indicators and uses this assessment to generate a customized roadmap for gradual improvement.",
+        "intro_p2": "The roadmap identifies the company’s main gaps and proposes prioritized actions according to its current level, selected maturity goal, implementation horizon, and available budget. Recommendations are organized into short-, medium-, and long-term stages to support a progressive implementation process aligned with each company’s circumstances.",
+        "intro_p3": "To begin, complete the required fields in the side panel with the company information. Then define the maturity level you intend to achieve and select the annual budget available for improvements. Finally, answer each question based on the company’s current situation and existing practices, rather than the situation it expects to reach in the future.",
+        "intro_p4": "Once the questionnaire is completed, RoGen generates a roadmap with the recommended actions and sends it to the registered email address together with the informed-consent record.",
         "cannot_load_profile": "Unable to load profile",
         "roadmap_error": "The roadmap could not be generated",
         "language_button": "Español",
@@ -2389,12 +2393,16 @@ def _render_intro_block(language: str) -> None:
         intro_title = html.escape(_t(language, "intro_title"))
         intro_p1 = html.escape(_t(language, "intro_p1"))
         intro_p2 = html.escape(_t(language, "intro_p2"))
+        intro_p3 = html.escape(_t(language, "intro_p3"))
+        intro_p4 = html.escape(_t(language, "intro_p4"))
         st.markdown(
             f"""
             <section class="app-intro app-intro--academic">
               <h2 class="app-intro-title">{intro_title}</h2>
               <p>{intro_p1}</p>
               <p>{intro_p2}</p>
+              <p>{intro_p3}</p>
+              <p>{intro_p4}</p>
             </section>
             """,
             unsafe_allow_html=True,
