@@ -2517,12 +2517,11 @@ def main() -> None:
         "small": _t(language, "company_small"),
         "medium": _t(language, "company_medium"),
     }
-    landing_rendered = False
     if "consent_session" not in st.session_state:
-        _render_main_title(language)
-        _render_intro_block(language)
-        landing_rendered = True
-        if not _render_consent_block(language):
+        if _render_consent_block(language):
+            # Render the accepted state from the top of the page on the next run.
+            st.rerun()
+        else:
             st.sidebar.selectbox(
                 _t(language, "company_type"),
                 options=["__select__", "small", "medium"],
@@ -2540,14 +2539,11 @@ def main() -> None:
     st.sidebar.markdown("---")
     selected_company_type = "" if company_type == "__select__" else company_type_labels.get(company_type, "")
 
-    if company_type == "__select__":
-        if not landing_rendered:
-            _render_main_title(language)
-            _render_intro_block(language)
-            _render_consent_block(language)
-        return
-
     _render_main_title(language, selected_company_type)
+    _render_intro_block(language)
+
+    if company_type == "__select__":
+        return
 
     try:
         profile = _load_profile_cached(str(ROOT), company_type, language, _catalog_cache_version())
