@@ -487,6 +487,34 @@ def weighted_avg(values: list[tuple[float, float]]) -> float:
     return sum(v * w for v, w in values) / tw
 
 
+def target_progress_pct(assessments: list[dict[str, object]]) -> float:
+    """Return maturity progress without treating a KPI above target as a regression.
+
+    The selected target is a minimum condition for each KPI. A KPI already above
+    that condition is preserved at its current level, and progress is calculated
+    across the valid transitions of each KPI rather than from raw score division.
+    """
+    completed = 0.0
+    required = 0.0
+    for row in assessments:
+        levels = [int(level) for level in row.get("available_levels", [])]
+        if len(levels) < 2:
+            continue
+        try:
+            current_position = levels.index(int(row.get("selected_level", levels[0])))
+            target_position = levels.index(int(row.get("effective_target_level", levels[0])))
+        except ValueError:
+            continue
+        weight = float(row.get("weight", 0) or 0)
+        if target_position <= 0 or weight <= 0:
+            continue
+        completed += min(current_position, target_position) * weight
+        required += target_position * weight
+    if required <= 0:
+        return 100.0
+    return min(max((completed / required) * 100.0, 0.0), 100.0)
+
+
 def build_traceability_entries(
     kpi_results: list[dict[str, object]],
     roadmap_entries: list[dict[str, object]],
@@ -587,7 +615,8 @@ def build_roadmap(
     target_level = max(1, min(int(target_level), max_level))
 
     domain_current: dict[str, list[tuple[float, float]]] = defaultdict(list)
-    domain_target: dict[str, list[tuple[float, float]]] = defaultdict(list)
+    domain_selected_target: dict[str, list[tuple[float, float]]] = defaultdict(list)
+    domain_effective_target: dict[str, list[tuple[float, float]]] = defaultdict(list)
     kpi_results = []
     # This analytical view preserves every questionnaire KPI. `kpi_results`
     # remains the gap-only collection consumed by the roadmap and PDF exports.
@@ -619,16 +648,17 @@ def build_roadmap(
         target_candidates = [level for level in available_levels if level <= target_level]
         target = target_candidates[-1] if target_candidates else available_levels[0]
 
-        domain_current[domain_localized].append((float(current), float(q["weight"])))
-        domain_target[domain_localized].append((float(target), float(q["weight"])))
-
         current_position = available_levels.index(current)
         target_position = available_levels.index(target)
+        effective_target = available_levels[max(current_position, target_position)]
+        domain_current[domain_localized].append((float(current), float(q["weight"])))
+        domain_selected_target[domain_localized].append((float(target), float(q["weight"])))
+        domain_effective_target[domain_localized].append((float(effective_target), float(q["weight"])))
+
         gap = max(target_position - current_position, 0)
         priority = round(gap * float(q["weight"]), 4)
         c_label = labels[current - 1]
         t_label = labels[target - 1]
-        effective_target = available_levels[max(current_position, target_position)]
 
         kpi_assessment_results.append(
             {
@@ -802,11 +832,22 @@ def build_roadmap(
     domain_results = []
     for d in sorted(domain_current.keys(), key=norm):
         cs = weighted_avg(domain_current[d])
-        ts = weighted_avg(domain_target[d])
-        domain_results.append({"domain": d, "current_score": round(cs, 4), "target_score": round(ts, 4), "gap": round(ts - cs, 4)})
+        selected_ts = weighted_avg(domain_selected_target[d])
+        effective_ts = weighted_avg(domain_effective_target[d])
+        domain_results.append(
+            {
+                "domain": d,
+                "current_score": round(cs, 4),
+                "selected_target_score": round(selected_ts, 4),
+                "target_score": round(effective_ts, 4),
+                "gap": round(effective_ts - cs, 4),
+            }
+        )
 
     current_score = weighted_avg([x for vals in domain_current.values() for x in vals])
-    target_score = weighted_avg([x for vals in domain_target.values() for x in vals])
+    selected_target_score = weighted_avg([x for vals in domain_selected_target.values() for x in vals])
+    target_score = weighted_avg([x for vals in domain_effective_target.values() for x in vals])
+    progress_pct = target_progress_pct(kpi_assessment_results)
 
     catalog_summary = catalog_report.get("summary", {}) if isinstance(catalog_report, dict) else {}
     return {
@@ -816,7 +857,9 @@ def build_roadmap(
             "questionnaire_instrument_version": INSTRUMENT_VERSION,
             "target_level_index": target_level,
             "current_score": round(current_score, 4),
+            "selected_target_score": round(selected_target_score, 4),
             "target_score": round(target_score, 4),
+            "target_progress_pct": round(progress_pct, 4),
             "kpi_results": kpi_results,
             "kpi_assessment_results": kpi_assessment_results,
             "domain_results": domain_results,
@@ -866,7 +909,9 @@ def save_txt(payload: dict[str, object], path: Path) -> None:
         f"Generado: {r.get('timestamp','')}",
         "",
         f"Current score: {r.get('current_score',0)}",
-        f"Target score: {r.get('target_score',0)}",
+        f"Selected-target reference score: {r.get('selected_target_score',0)}",
+        f"Adjusted target score: {r.get('target_score',0)}",
+        f"Target progress (%): {r.get('target_progress_pct',0)}",
         f"Target level: {r.get('target_level_index',0)}",
         "",
         f"Catalog ({cat.get('schema_version','catalog_v3.0')}): "

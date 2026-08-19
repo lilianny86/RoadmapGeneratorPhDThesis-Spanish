@@ -28,7 +28,7 @@ from stats_export import (
     build_statistical_data_guide_csv_bytes,
     build_statistical_record,
 )
-from display_format import format_clp, format_decimal, format_integer, format_timestamp, to_float
+from display_format import format_clp, format_decimal, format_integer, format_percentage, format_timestamp, to_float
 from recommendation_engine import build_engine_config
 from roadmap_core import build_roadmap, load_profile_data, save_traceability_csv, save_traceability_json, save_txt
 from security_config import ENV_KEYS, load_security_config, validate_smtp_config
@@ -110,7 +110,7 @@ UI_TEXTS = {
         "generating_overlay_text": "El proceso puede tardar unos segundos.",
         "generated_ok": "Roadmap generado correctamente.",
         "current_score": "Puntaje actual",
-        "target_score": "Puntaje objetivo",
+        "target_score": "Objetivo ajustado",
         "actions": "Acciones",
         "email_label": "Correo",
         "email_not_sent": "No enviado",
@@ -220,7 +220,7 @@ UI_TEXTS = {
         "generating_overlay_text": "The process may take a few seconds.",
         "generated_ok": "Roadmap generated successfully.",
         "current_score": "Current Score",
-        "target_score": "Target Score",
+        "target_score": "Adjusted Target",
         "actions": "Actions",
         "email_label": "Email",
         "email_not_sent": "Not sent",
@@ -2093,6 +2093,18 @@ def _safe_smtp_error_message(exc: Exception, language: str) -> str:
     return _t(language, "smtp_error_generic")
 
 
+def _safe_smtp_console_diagnostic(exc: Exception) -> str:
+    """Keep SMTP diagnostics useful without writing credentials to app logs."""
+    detail = str(exc or "").strip()
+    detail = re.sub(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", "<email oculto>", detail)
+    detail = re.sub(
+        r"(?i)(password|contrase(?:n|ñ)a|token|secret)\s*([=:])\s*[^\s,;]+",
+        r"\1\2<oculto>",
+        detail,
+    )
+    return f"{type(exc).__name__}: {detail or 'sin detalle entregado por el servidor'}"
+
+
 def _send_pdfs_via_gmail(
     *,
     root: Path,
@@ -2207,8 +2219,10 @@ def _statistical_email_body(
             f"Questionnaire version: {record.get('questionnaire_instrument_version', '')}\n"
             f"Global target level: {format_integer(record.get('global_target_level', 0))}\n"
             f"Current maturity score: {format_decimal(record.get('current_maturity_score', 0))}\n"
-            f"Target maturity score: {format_decimal(record.get('target_maturity_score', 0))}\n"
-            f"Maturity gap: {format_decimal(record.get('maturity_gap', 0))}\n"
+            f"Selected-target reference score: {format_decimal(record.get('selected_target_maturity_score', 0))}\n"
+            f"Adjusted target maturity score: {format_decimal(record.get('target_maturity_score', 0))}\n"
+            f"Remaining maturity gap: {format_decimal(record.get('maturity_gap', 0))}\n"
+            f"Target progress: {format_percentage(record.get('target_progress_pct', 0))}\n"
             f"KPIs assessed: {format_integer(record.get('questionnaire_kpis_total', 0))}\n"
             f"KPIs with gap: {format_integer(record.get('kpis_with_gap', 0))}\n"
             f"KPIs at or above target: {format_integer(record.get('kpis_at_or_above_target', 0))}\n\n"
@@ -2243,8 +2257,10 @@ def _statistical_email_body(
         f"Versión del cuestionario: {record.get('questionnaire_instrument_version', '')}\n"
         f"Nivel objetivo global: {format_integer(record.get('global_target_level', 0))}\n"
         f"Puntaje de madurez actual: {format_decimal(record.get('current_maturity_score', 0))}\n"
-        f"Puntaje de madurez objetivo: {format_decimal(record.get('target_maturity_score', 0))}\n"
-        f"Brecha de madurez: {format_decimal(record.get('maturity_gap', 0))}\n"
+        f"Puntaje de referencia de la meta seleccionada: {format_decimal(record.get('selected_target_maturity_score', 0))}\n"
+        f"Puntaje de madurez objetivo ajustado: {format_decimal(record.get('target_maturity_score', 0))}\n"
+        f"Brecha de madurez pendiente: {format_decimal(record.get('maturity_gap', 0))}\n"
+        f"Avance hacia la meta: {format_percentage(record.get('target_progress_pct', 0))}\n"
         f"KPI evaluados: {format_integer(record.get('questionnaire_kpis_total', 0))}\n"
         f"KPI con brecha: {format_integer(record.get('kpis_with_gap', 0))}\n"
         f"KPI en o sobre la meta: {format_integer(record.get('kpis_at_or_above_target', 0))}\n\n"
@@ -2333,12 +2349,15 @@ def _render_downloads(result: dict[str, object], language: str) -> None:
         if not path.exists() or path.suffix.lower() != ".pdf":
             continue
         name_txt = path.name.lower()
+        # Consent records can also end in _es.pdf or _en.pdf. Classify them
+        # first so they never replace a roadmap download.
+        if name_txt.startswith("consent_"):
+            consent_pdf = path
+            continue
         if name_txt.endswith("_es.pdf"):
             pdf_es = path
         if name_txt.endswith("_en.pdf"):
             pdf_en = path
-        if name_txt.startswith("consent_"):
-            consent_pdf = path
 
     if pdf_es is None and pdf_en is None and consent_pdf is None:
         return
@@ -2833,7 +2852,11 @@ def main() -> None:
                         language=language,
                     )
                 except Exception as stats_exc:
-                    print(f"RoGen statistical CSV email not sent: {_safe_smtp_error_message(stats_exc, language)}")
+                    print(
+                        "RoGen statistical CSV email not sent: "
+                        f"{_safe_smtp_error_message(stats_exc, language)} "
+                        f"[{_safe_smtp_console_diagnostic(stats_exc)}]"
+                    )
 
                 result = payload_selected.get("result", {})
                 st.session_state["ui_last_result"] = {

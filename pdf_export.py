@@ -768,12 +768,6 @@ def _metric_card(doc: SimplePdf, *, x: float, y_top: float, width: float, title:
     return y_bottom
 
 
-def _progress_to_target_pct(current_score: float, target_score: float) -> float:
-    if target_score <= 0:
-        return 0.0
-    return min(max((current_score / target_score) * 100.0, 0.0), 100.0)
-
-
 def _render_friendly_summary(
     doc: "SimplePdf",
     entries: list[dict[str, object]],
@@ -781,6 +775,7 @@ def _render_friendly_summary(
     current_score: float,
     target_score: float,
     gap_total: float,
+    target_progress_pct: float,
 ) -> None:
     doc.add_section_header("Resumen", accent=PALETTE["forest"])
     card_top = doc.current_y
@@ -806,9 +801,9 @@ def _render_friendly_summary(
         x=x1,
         y_top=card_top,
         width=card_w,
-        title="Puntaje objetivo",
+        title="Objetivo ajustado",
         value=format_decimal(target_score),
-        note="meta de madurez",
+        note="preserva KPI superiores",
     )
     _metric_card(
         doc,
@@ -825,7 +820,7 @@ def _render_friendly_summary(
         y_top=card_top,
         width=card_w,
         title="Avance a la meta",
-        value=format_percentage(_progress_to_target_pct(current_score, target_score)),
+        value=format_percentage(target_progress_pct),
         note="Actual / Objetivo",
     )
     doc.current_y = card_top - 84
@@ -1714,9 +1709,9 @@ def export_technical_pdf(payload: dict[str, object], output_path: Path) -> None:
         x=x1,
         y_top=card_top,
         width=card_w,
-        title="Puntaje objetivo",
+        title="Objetivo ajustado",
         value=format_decimal(result.get("target_score", 0)),
-        note=f"nivel {format_integer(result.get('target_level_index', 0))}",
+        note=f"nivel {format_integer(result.get('target_level_index', 0))} ajustado",
     )
     _metric_card(
         doc,
@@ -1733,7 +1728,7 @@ def export_technical_pdf(payload: dict[str, object], output_path: Path) -> None:
         y_top=card_top,
         width=card_w,
         title="Avance a la meta",
-        value=format_percentage(_progress_to_target_pct(to_float(result.get("current_score", 0)), to_float(result.get("target_score", 0)))),
+        value=format_percentage(to_float(result.get("target_progress_pct", 0))),
         note="Actual / Objetivo",
     )
     doc.current_y = card_top - 84
@@ -1837,6 +1832,7 @@ def export_friendly_pdf(payload: dict[str, object], output_path: Path) -> None:
     current_score = float(result.get("current_score", 0))
     target_score = float(result.get("target_score", 0))
     gap_total = target_score - current_score
+    target_progress_pct = float(result.get("target_progress_pct", 0))
 
     doc = SimplePdf()
     doc.add_banner(
@@ -1849,6 +1845,7 @@ def export_friendly_pdf(payload: dict[str, object], output_path: Path) -> None:
         current_score=current_score,
         target_score=target_score,
         gap_total=gap_total,
+        target_progress_pct=target_progress_pct,
     )
     _render_budget_table(
         doc,
