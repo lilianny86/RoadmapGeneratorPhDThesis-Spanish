@@ -37,7 +37,7 @@ def _norm(text: str) -> str:
 
 
 _GENERIC_SOLUTION_NAMES_ES = {
-    "concurso cnr ley 18.450 para tecnificacion de riego": "Postulación a financiamiento para tecnificación de riego",
+    "concurso cnr ley 18.450 para tecnificacion de riego": "Postular a bonificaciones de la Ley de Riego para tecnificación y obras de riego",
     "programa inia la cruz de riego presurizado con energia fotovoltaica": "Implementación de riego presurizado con energía fotovoltaica",
     "valvula solenoide 1 pulgada orbit en sodimac": "Sectorización automatizada del riego",
     "agrometeorologia inia para evapotranspiracion y programacion de riego": "Programación de riego basada en evapotranspiración y clima",
@@ -127,6 +127,15 @@ def _solution_urls(row: dict[str, object], *, max_urls: int = 1) -> list[str]:
         if len(out) >= max_urls:
             break
     return out
+
+
+def _conditional_source_links(row: dict[str, object], language: str) -> list[tuple[str, str]]:
+    if row.get("solution_code") == "CH_CNR_RIEGO":
+        links = _solution_urls({"source_url": row.get("source_url")}, max_urls=2)
+        if len(links) == 2:
+            labels = ("CNR funding calls:", "CNR calendar:") if language == "en" else ("Concursos CNR:", "Calendario CNR:")
+            return list(zip(labels, links))
+    return [("URL:", url) for url in _solution_urls(row)]
 
 
 def _horizon_order(plazo: str) -> int:
@@ -1096,15 +1105,15 @@ def export_roadmap_pdf(payload: dict[str, object], output_path: Path) -> None:
     if conditional:
         doc.add_section_header("Acciones que requieren confirmación", accent=PALETTE["olive"])
         for item in conditional:
-            doc._ensure_space(43.0)
+            links = _conditional_source_links(item, "es")
+            doc._ensure_space(58.0 if len(links) > 1 else 43.0)
             doc.add_text(_solution_display_name(item), bold=True, size=9.5, gap_after=0.0)
             doc.add_text(
                 f"{item.get('kpi', '')} | {_horizon_label(str(item.get('plazo', '')))} | {action_economics(item, 'es')}",
                 indent=10, size=8.7, gap_after=1.0,
             )
-            urls = _solution_urls(item, max_urls=1)
-            if urls:
-                _add_labeled_url(doc, label="URL:", url=urls[0], size=8.7, indent=10, gap_after=3.0)
+            for label, url in links:
+                _add_labeled_url(doc, label=label, url=url, size=8.7, indent=10, gap_after=3.0)
     entries = compatible
 
     doc.add_section_header("Acciones de impacto inmediato", accent=PALETTE["forest"])

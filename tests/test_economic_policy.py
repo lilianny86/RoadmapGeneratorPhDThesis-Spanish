@@ -1,10 +1,12 @@
 import csv
 import io
+import re
 import tempfile
 import unittest
 from pathlib import Path
 
 from economic_policy import BUDGET_OPTIONS, classify_economic_fit
+from en_localization import localize_solution_name
 from pdf_export import export_roadmap_pdf, identified_gap_indicators
 from pdf_export_en import export_roadmap_pdf as export_roadmap_pdf_en
 from recommendation_engine import EngineConfig, optimize_recommendations
@@ -31,6 +33,35 @@ def candidate(name, effort, financing='direct', transition='1:test', stage='Shor
 
 
 class EconomicPolicyTests(unittest.TestCase):
+    def test_cnr_roadmap_shows_both_official_references(self):
+        old = 'https://www.cnr.gob.cl/concurso-700-millones/'
+        contests = 'https://www.cnr.gob.cl/agricultores/concursos-de-riego-y-drenaje/'
+        calendar = 'https://www.cnr.gob.cl/agricultores/calendario-de-concurso/'
+        rows, _ = load_solutions(ROOT)
+        entries = [row for row in rows if row['solution_code'] == 'CH_CNR_RIEGO']
+        self.assertEqual(len(entries), 8)
+        for item in entries:
+            self.assertEqual(item['financing_mode'], 'cofinancing')
+            self.assertEqual(item['source_url'], f'{contests} | {calendar}')
+            self.assertNotIn(old, item['provider_url'])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            for lang, export, title, label, status in (
+                ('es', export_roadmap_pdf, 'Postular a bonificaciones de la Ley de Riego',
+                 'Calendario CNR:', 'Sujeta a postulación y adjudicación'),
+                ('en', export_roadmap_pdf_en, 'Apply for Irrigation Law grants',
+                 'CNR calendar:', 'Subject to application and award'),
+            ):
+                item = dict(entries[0], selection_status='cofinancing_pending')
+                item['solution_name'] = localize_solution_name(item['name'], lang, solution_code=item['solution_code'])
+                path = Path(tmp) / f'roadmap_{lang}.pdf'
+                export({'result': {'roadmap_entries': [item]}}, path)
+                pdf = path.read_bytes().decode('cp1252', errors='replace')
+                display_text = ' '.join(re.findall(r'\(((?:\\.|[^\\)])*)\) Tj', pdf))
+                for text in (title, label, status, contests, calendar):
+                    self.assertTrue(text in display_text, f'{lang} PDF is missing {text!r}')
+                self.assertTrue(old not in display_text, f'{lang} PDF still displays the expired link')
+
     def test_matrix_by_profile(self):
         expected = (
             ("compatible", "conditional_effort", "not_compatible"),

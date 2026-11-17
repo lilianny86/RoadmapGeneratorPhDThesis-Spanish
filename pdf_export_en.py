@@ -8,7 +8,7 @@ from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
 from economic_policy import action_economics
-from pdf_export import _format_solution_description, identified_gap_indicators
+from pdf_export import _conditional_source_links, _format_solution_description, identified_gap_indicators
 from display_format import format_integer, format_percentage, format_timestamp, to_float
 
 PALETTE = {
@@ -37,8 +37,8 @@ def _norm(text: str) -> str:
 
 
 _GENERIC_SOLUTION_NAMES_EN = {
-    "cnr law 18,450 irrigation technification grant call": "Application for irrigation technology financing",
-    "concurso cnr ley 18.450 para tecnificacion de riego": "Application for irrigation technology financing",
+    "cnr law 18,450 irrigation technification grant call": "Apply for Irrigation Law grants for modernization and irrigation works",
+    "concurso cnr ley 18.450 para tecnificacion de riego": "Apply for Irrigation Law grants for modernization and irrigation works",
     "inia la cruz program for pressurized irrigation with photovoltaic energy": "Pressurized irrigation with photovoltaic energy",
     "programa inia la cruz de riego presurizado con energia fotovoltaica": "Pressurized irrigation with photovoltaic energy",
     "orbit 1-inch solenoid valve at sodimac": "Basic automated irrigation sector control",
@@ -1110,15 +1110,15 @@ def export_roadmap_pdf(payload: dict[str, object], output_path: Path) -> None:
     if conditional:
         doc.add_section_header("Actions that require confirmation", accent=PALETTE["olive"])
         for item in conditional:
-            doc._ensure_space(43.0)
+            links = _conditional_source_links(item, "en")
+            doc._ensure_space(58.0 if len(links) > 1 else 43.0)
             doc.add_text(_solution_display_name(item), bold=True, size=9.5, gap_after=0.0)
             doc.add_text(
                 f"{item.get('kpi', '')} | {_horizon_label(str(item.get('plazo', '')))} | {action_economics(item, 'en')}",
                 indent=10, size=8.7, gap_after=1.0,
             )
-            urls = _solution_urls(item, max_urls=1)
-            if urls:
-                _add_labeled_url(doc, label="URL:", url=urls[0], size=8.7, indent=10, gap_after=3.0)
+            for label, url in links:
+                _add_labeled_url(doc, label=label, url=url, size=8.7, indent=10, gap_after=3.0)
     entries = compatible
 
     doc.add_section_header("Quick Wins", accent=PALETTE["forest"])
