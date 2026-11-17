@@ -3,11 +3,11 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from costing import estimate_cost_clp
+from economic_policy import COMPATIBILITY, EFFORT_ORDER, classify_economic_fit
 
 
 def _norm(value: object) -> str:
@@ -26,48 +26,13 @@ def _horizon_order(plazo: str) -> int:
     return 4
 
 
-def _extract_timeline_months(value: object) -> float | None:
-    if value is None:
-        return None
-    text = str(value)
-    normalized = _norm(text)
-    numbers = [float(token.replace(",", ".")) for token in re.findall(r"\d+(?:[.,]\d+)?", text)]
-    if not numbers:
-        return None
-    if "mes" in normalized or "month" in normalized:
-        return max(numbers)
-    if "anio" in normalized or "year" in normalized:
-        return max(numbers) * 12.0
-    return None
-
-
 def _canonical_horizon(value: object) -> str:
-    key = _norm(value)
-    if "corto" in key or "short" in key:
-        return "Short term"
-    if "mediano" in key or "medium" in key:
-        return "Medium term"
-    if "largo" in key or "long" in key:
-        return "Long term"
-    months = _extract_timeline_months(value)
-    if months is not None:
-        if months <= 3:
-            return "Short term"
-        if months <= 6:
-            return "Medium term"
-        if months <= 12:
-            return "Long term"
-    return "Unclassified"
+    return {
+        "corto plazo": "Short term", "short term": "Short term",
+        "mediano plazo": "Medium term", "medium term": "Medium term",
+        "largo plazo": "Long term", "long term": "Long term",
+    }.get(_norm(value), "Unclassified")
 
-
-def _legacy_horizon_label(canonical_horizon: str) -> str:
-    mapping = {
-        "Short term": "Corto plazo",
-        "Medium term": "Mediano plazo",
-        "Long term": "Largo plazo",
-        "Unclassified": "Sin clasificar",
-    }
-    return mapping.get(canonical_horizon, "Sin clasificar")
 
 
 def _to_float(value: Any, default: float | None = None) -> float | None:
@@ -95,51 +60,17 @@ class EngineConfig:
     min_domain_coverage: int = 4
     weight_priority: float = 0.34
     weight_impact: float = 0.26
-    weight_cost: float = 0.16
     weight_risk: float = 0.12
     weight_effort: float = 0.12
-    penalty_unknown_cost: float = 0.05
     penalty_repeat_provider: float = 0.08
     penalty_repeat_domain: float = 0.04
-    budget_total_clp: float | None = None
-    budget_short_clp: float | None = None
-    budget_medium_clp: float | None = None
-    budget_long_clp: float | None = None
-    horizon_factor: dict[str, float] = field(
-        default_factory=lambda: {
-            "Short term": 1.0,
-            "Medium term": 0.92,
-            "Long term": 0.84,
-            "Unclassified": 0.75,
-            "Corto plazo": 1.0,
-            "Mediano plazo": 0.92,
-            "Largo plazo": 0.84,
-            "Sin clasificar": 0.75,
-        }
-    )
+    budget_capacity: str = ""
 
-    def budget_for(self, horizon: str) -> float | None:
-        canonical = _canonical_horizon(horizon)
-        if canonical == "Short term":
-            return self.budget_short_clp
-        if canonical == "Medium term":
-            return self.budget_medium_clp
-        if canonical == "Long term":
-            return self.budget_long_clp
-        return None
 
 
 def _apply_dict_config(cfg: EngineConfig, raw: dict[str, Any]) -> EngineConfig:
     for key, value in raw.items():
         if not hasattr(cfg, key):
-            continue
-        if key == "horizon_factor" and isinstance(value, dict):
-            hf = dict(cfg.horizon_factor)
-            for h_key, h_val in value.items():
-                v = _to_float(h_val)
-                if v is not None:
-                    hf[str(h_key)] = v
-            cfg.horizon_factor = hf
             continue
         current = getattr(cfg, key)
         if isinstance(current, bool):
@@ -215,95 +146,38 @@ def match_solutions(
     return selected[: max(1, max_candidates)]
 
 
-def _estimate_cost(candidate: dict[str, object], fallback_cost: float) -> float | None:
-    return estimate_cost_clp(
-        candidate,
-        fallback_cost=fallback_cost if fallback_cost > 0 else None,
-        use_existing_estimate=False,
-    )
-
-
 def _score_candidates(candidates: list[dict[str, object]], cfg: EngineConfig) -> list[dict[str, object]]:
-    if not candidates:
-        return []
-    max_priority = max(float(c.get("priority", 0) or 0) for c in candidates)
-    known_costs = [_estimate_cost(c, fallback_cost=0.0) for c in candidates]
-    known_costs = [cost for cost in known_costs if cost is not None]
-    fallback_cost = (sum(known_costs) / len(known_costs)) if known_costs else 0.0
-    max_cost = max(known_costs) if known_costs else 1.0
-
+    max_priority = max((float(c.get("priority", 0) or 0) for c in candidates), default=0.0)
     scored: list[dict[str, object]] = []
-    for c in candidates:
-        row = dict(c)
+    for candidate in candidates:
+        row = dict(candidate)
         priority = float(row.get("priority", 0) or 0)
         impact = float(row.get("impact_score", 3.0) or 3.0)
         risk = float(row.get("risk_score", 3.0) or 3.0)
         effort = float(row.get("effort_score", 3.0) or 3.0)
-        cost_est = _estimate_cost(row, fallback_cost=fallback_cost)
-        has_known_cost = _to_float(row.get("price_max_clp"), default=None) is not None or _to_float(row.get("price_min_clp"), default=None) is not None
-
-        priority_n = (priority / max_priority) if max_priority > 0 else 0.0
-        impact_n = min(max(impact / 5.0, 0.0), 1.0)
-        risk_n = min(max(1.0 - (risk / 5.0), 0.0), 1.0)
-        effort_n = min(max(1.0 - (effort / 5.0), 0.0), 1.0)
-        if cost_est is None:
-            cost_n = 0.45
-        elif max_cost > 0:
-            cost_n = min(max(1.0 - (cost_est / max_cost), 0.0), 1.0)
-        else:
-            cost_n = 0.5
-
-        contrib_priority = cfg.weight_priority * priority_n
-        contrib_impact = cfg.weight_impact * impact_n
-        contrib_cost = cfg.weight_cost * cost_n
-        contrib_risk = cfg.weight_risk * risk_n
-        contrib_effort = cfg.weight_effort * effort_n
-        base = contrib_priority + contrib_impact + contrib_cost + contrib_risk + contrib_effort
-        horizon = _canonical_horizon(row.get("plazo", "Unclassified"))
-        legacy_horizon = _legacy_horizon_label(horizon)
-        horizon_mult = cfg.horizon_factor.get(
-            horizon,
-            cfg.horizon_factor.get(
-                legacy_horizon,
-                cfg.horizon_factor.get("Unclassified", cfg.horizon_factor.get("Sin clasificar", 0.75)),
-            ),
-        )
-        score = base * horizon_mult
-        if not has_known_cost:
-            score -= cfg.penalty_unknown_cost
-
-        row["cost_estimated_clp"] = cost_est
-        row["_base_score"] = max(score, 0.0)
-        row["_score_components"] = {
-            "prioridad_kpi": round(contrib_priority, 4),
-            "impacto": round(contrib_impact, 4),
-            "costo": round(contrib_cost, 4),
-            "riesgo": round(contrib_risk, 4),
-            "esfuerzo": round(contrib_effort, 4),
-            "factor_horizonte": round(horizon_mult, 4),
+        components = {
+            "prioridad_kpi": cfg.weight_priority * (priority / max_priority if max_priority else 0.0),
+            "impacto": cfg.weight_impact * (impact / 5.0),
+            "riesgo": cfg.weight_risk * (1.0 - risk / 5.0),
+            "esfuerzo": cfg.weight_effort * (1.0 - effort / 5.0),
         }
+        row["_base_score"] = max(sum(components.values()), 0.0)
+        row["_score_components"] = {key: round(value, 4) for key, value in components.items()}
+        row["selection_status"] = classify_economic_fit(
+            cfg.budget_capacity, str(row.get("economic_effort", "")), str(row.get("financing_mode", ""))
+        )
         scored.append(row)
     return scored
 
 
-def _can_fit_budget(
-    candidate: dict[str, object],
-    cfg: EngineConfig,
-    *,
-    used_total: float,
-    used_by_horizon: dict[str, float],
-) -> bool:
-    cost = _to_float(candidate.get("cost_estimated_clp"), default=None)
-    if cost is None:
-        # Permitimos costo no determinado para no bloquear iniciativas sin precio público.
-        return True
-    horizon = _canonical_horizon(candidate.get("plazo", "Unclassified"))
-    if cfg.budget_total_clp is not None and (used_total + cost) > cfg.budget_total_clp:
-        return False
-    h_budget = cfg.budget_for(horizon)
-    if h_budget is not None and (used_by_horizon.get(horizon, 0.0) + cost) > h_budget:
-        return False
-    return True
+def _economic_order(candidate: dict[str, object]) -> int:
+    effort = candidate.get("economic_effort")
+    return EFFORT_ORDER.index(effort) if effort in EFFORT_ORDER else len(EFFORT_ORDER)
+
+
+def _solution_key(candidate: dict[str, object]) -> str:
+    return _norm(candidate.get("catalog_solution_name") or candidate.get("solution_name"))
+
 
 
 def _build_explanation(
@@ -322,10 +196,6 @@ def _build_explanation(
     )
     top_bits = [f"{k}={v:.2f}" for k, v in ordered[:2]]
     assumptions: list[str] = []
-    if candidate.get("cost_estimated_clp") is None:
-        assumptions.append("Costo estimado por defecto (sin precio público confirmado).")
-    if _norm(candidate.get("price_type", "")) == "subscription":
-        assumptions.append("Costo referido a esquema de suscripción.")
     if provider_repeats > 0:
         assumptions.append("Penalización por proveedor repetido para mejorar diversidad.")
     if domain_repeats > 0:
@@ -346,147 +216,151 @@ def optimize_recommendations(
     candidate_entries: list[dict[str, object]],
     cfg: EngineConfig,
 ) -> tuple[list[dict[str, object]], dict[str, object]]:
+    if cfg.budget_capacity not in COMPATIBILITY:
+        raise ValueError("A valid profile-specific budget capacity is required.")
     scored = _score_candidates(candidate_entries, cfg)
-    if not scored:
-        return [], {
-            "engine_version": "eng_v1.0",
-            "selected_count": 0,
-            "candidate_count": 0,
-            "used_budget_total_clp": 0.0,
-            "used_budget_by_horizon": {},
-            "reason": "Sin candidatos para optimizar.",
-        }
-
-    remaining = list(scored)
     selected: list[dict[str, object]] = []
-    used_total = 0.0
-    used_by_horizon: dict[str, float] = {}
     provider_count: dict[str, int] = {}
     domain_count: dict[str, int] = {}
     kpi_count: dict[str, int] = {}
     used_solution_names: set[str] = set()
+    selected_transitions: set[str] = set()
     required_transition_groups: dict[str, list[dict[str, object]]] = {}
+    pending_states = {"conditional_effort", "cofinancing_pending", "quotation_pending"}
+    for c in scored:
+        key = str(c.get("required_transition_key", "")).strip()
+        if key:
+            required_transition_groups.setdefault(key, []).append(c)
+
+    # An effort-based exception is only allowed without a lower-effort compatible match.
+    for candidates in required_transition_groups.values():
+        for candidate in candidates:
+            if candidate["selection_status"] == "conditional_effort" and any(
+                alternative["selection_status"] == "compatible"
+                and _economic_order(alternative) < _economic_order(candidate)
+                for alternative in candidates
+            ):
+                candidate["selection_status"] = "lower_effort_available"
+
+    def kpi_key(c: dict[str, object]) -> str:
+        return _norm(c.get("question_number") or c.get("kpi"))
 
     def can_select(c: dict[str, object]) -> bool:
-        if len(selected) >= cfg.max_recommendations:
-            return False
-        provider = _norm(c.get("provider", ""))
-        kpi = _norm(c.get("kpi", ""))
-        name = _norm(c.get("solution_name", ""))
-        if provider and provider_count.get(provider, 0) >= cfg.max_per_provider:
-            return False
-        if kpi and kpi_count.get(kpi, 0) >= cfg.max_per_kpi:
-            return False
-        if cfg.enforce_unique_solution and name and name in used_solution_names:
-            return False
-        if not _can_fit_budget(c, cfg, used_total=used_total, used_by_horizon=used_by_horizon):
-            return False
-        return True
+        provider = _norm(c.get("provider"))
+        kpi = kpi_key(c)
+        name = _solution_key(c)
+        return (
+            len(selected) < cfg.max_recommendations
+            and not c.get("_selected")
+            and (not provider or provider_count.get(provider, 0) < cfg.max_per_provider)
+            and (not kpi or kpi_count.get(kpi, 0) < cfg.max_per_kpi)
+            and (not cfg.enforce_unique_solution or not name or name not in used_solution_names)
+        )
 
-    def register_selection(c: dict[str, object], dynamic_score: float) -> None:
-        nonlocal used_total
-
-        provider = _norm(c.get("provider", ""))
-        domain = _norm(c.get("domain", ""))
-        kpi = _norm(c.get("kpi", ""))
-        name = _norm(c.get("solution_name", ""))
-        cost = _to_float(c.get("cost_estimated_clp"), default=None)
-        if cost is not None:
-            used_total += cost
-            horizon = _canonical_horizon(c.get("plazo", "Unclassified"))
-            used_by_horizon[horizon] = used_by_horizon.get(horizon, 0.0) + cost
+    def register_selection(c: dict[str, object], score: float) -> None:
+        provider = _norm(c.get("provider"))
+        domain = _norm(c.get("catalog_domain") or c.get("domain"))
+        kpi = kpi_key(c)
+        name = _solution_key(c)
         provider_count[provider] = provider_count.get(provider, 0) + 1
         domain_count[domain] = domain_count.get(domain, 0) + 1
         kpi_count[kpi] = kpi_count.get(kpi, 0) + 1
         if name:
             used_solution_names.add(name)
-        c["_selected_dynamic_score"] = dynamic_score
+        if c.get("required_transition_key"):
+            selected_transitions.add(str(c["required_transition_key"]))
+        c["_selected"] = True
+        c["_selected_dynamic_score"] = score
         selected.append(c)
 
-    for c in remaining:
-        transition_key = str(c.get("required_transition_key", "")).strip()
-        if transition_key:
-            required_transition_groups.setdefault(transition_key, []).append(c)
-
-    uncovered_required_transitions: list[str] = []
-    for transition_key in sorted(required_transition_groups):
-        stage_candidates = required_transition_groups[transition_key]
-        stage_candidates.sort(
-            key=lambda c: (
-                _norm(c.get("solution_name", "")) in used_solution_names,
-                -float(c.get("_base_score", 0)),
-                _norm(c.get("solution_name", "")),
-            )
+    def rank(c: dict[str, object], score: float | None = None) -> tuple:
+        return (
+            -float(c["_base_score"] if score is None else score),
+            _economic_order(c),
+            _solution_key(c),
         )
-        eligible_candidates = [candidate for candidate in stage_candidates if can_select(candidate)]
-        if not eligible_candidates:
-            uncovered_required_transitions.append(transition_key)
-            continue
-        best = eligible_candidates[0]
-        register_selection(best, float(best.get("_base_score", 0)))
 
+    # Preserve the transition-first pass, reserving its first pass for compatible actions.
+    for allowed in ({"compatible"}, pending_states):
+        for key, candidates in sorted(required_transition_groups.items()):
+            if key in selected_transitions:
+                continue
+            eligible = [c for c in candidates if c["selection_status"] in allowed and can_select(c)]
+            if eligible:
+                best = min(eligible, key=rank)
+                register_selection(best, float(best["_base_score"]))
+
+    compatible = [c for c in scored if c["selection_status"] == "compatible"]
     if cfg.diversify_domains:
         best_by_domain: dict[str, dict[str, object]] = {}
-        for c in sorted(remaining, key=lambda x: float(x.get("_base_score", 0)), reverse=True):
-            d = _norm(c.get("domain", ""))
-            if not d or d in best_by_domain:
-                continue
-            best_by_domain[d] = c
-        for _, c in list(best_by_domain.items())[: max(0, cfg.min_domain_coverage)]:
-            if not can_select(c):
-                continue
-            register_selection(c, float(c.get("_base_score", 0)))
+        for c in sorted(compatible, key=rank):
+            domain = _norm(c.get("catalog_domain") or c.get("domain"))
+            if domain and can_select(c):
+                best_by_domain.setdefault(domain, c)
+        for c in list(best_by_domain.values())[:max(0, cfg.min_domain_coverage)]:
+            if can_select(c):
+                register_selection(c, float(c["_base_score"]))
+
+    def dynamic_score(c: dict[str, object]) -> float:
+        provider = _norm(c.get("provider"))
+        domain = _norm(c.get("catalog_domain") or c.get("domain"))
+        return (
+            float(c["_base_score"])
+            - cfg.penalty_repeat_provider * provider_count.get(provider, 0)
+            - cfg.penalty_repeat_domain * domain_count.get(domain, 0)
+        )
 
     while len(selected) < cfg.max_recommendations:
-        best_idx = -1
-        best_score = -1.0
-        for idx, c in enumerate(remaining):
-            if c in selected:
-                continue
-            if not can_select(c):
-                continue
-            provider = _norm(c.get("provider", ""))
-            domain = _norm(c.get("domain", ""))
-            dyn = float(c.get("_base_score", 0))
-            dyn -= cfg.penalty_repeat_provider * provider_count.get(provider, 0)
-            dyn -= cfg.penalty_repeat_domain * max(domain_count.get(domain, 0) - 0, 0)
-            if dyn > best_score:
-                best_score = dyn
-                best_idx = idx
-        if best_idx < 0:
+        eligible = [(dynamic_score(c), c) for c in compatible if can_select(c)]
+        if not eligible:
             break
-        c = remaining[best_idx]
-        register_selection(c, best_score)
+        score, best = min(eligible, key=lambda item: rank(item[1], item[0]))
+        if score <= -1.0:
+            break
+        register_selection(best, score)
 
-    selected.sort(key=lambda x: (_horizon_order(str(x.get("plazo", ""))), -float(x.get("_selected_dynamic_score", 0))))
-
-    explained: list[dict[str, object]] = []
-    for i, c in enumerate(selected, start=1):
-        provider = _norm(c.get("provider", ""))
-        domain = _norm(c.get("domain", ""))
+    selected.sort(key=lambda c: (
+        _horizon_order(str(c.get("plazo", ""))),
+        c["selection_status"] != "compatible",
+        *rank(c, float(c["_selected_dynamic_score"])),
+    ))
+    explained = []
+    for i, c in enumerate(selected, 1):
+        provider = _norm(c.get("provider"))
+        domain = _norm(c.get("catalog_domain") or c.get("domain"))
         row = dict(c)
         row["engine_explanation"] = _build_explanation(
             row,
             rank=i,
-            dynamic_score=float(row.get("_selected_dynamic_score", row.get("_base_score", 0))),
+            dynamic_score=float(row["_selected_dynamic_score"]),
             provider_repeats=max(provider_count.get(provider, 1) - 1, 0),
             domain_repeats=max(domain_count.get(domain, 1) - 1, 0),
         )
-        row.pop("_base_score", None)
-        row.pop("_selected_dynamic_score", None)
-        row.pop("_score_components", None)
+        for field in ("_base_score", "_score_components", "_selected", "_selected_dynamic_score", "catalog_solution_name", "catalog_domain"):
+            row.pop(field, None)
         explained.append(row)
 
-    report = {
-        "engine_version": "eng_v1.0",
+    outcomes = {}
+    for key, candidates in required_transition_groups.items():
+        chosen = {c["selection_status"] for c in candidates if c.get("_selected")}
+        candidate_states = {str(c["selection_status"]) for c in candidates}
+        if "compatible" in chosen:
+            outcome = "compatible"
+        elif chosen:
+            outcome = next(iter(chosen))
+        elif candidate_states == {"not_compatible"}:
+            outcome = "not_compatible"
+        elif candidate_states <= {"not_compatible", "insufficient_evidence"}:
+            outcome = "insufficient_evidence"
+        else:
+            outcome = "selection_constraints"
+        outcomes[key] = {"status": outcome, "candidate_statuses": sorted(candidate_states)}
+
+    return explained, {
+        "engine_version": "eng_v2.0",
         "candidate_count": len(scored),
         "selected_count": len(explained),
-        "used_budget_total_clp": round(used_total, 2),
-        "used_budget_by_horizon": {k: round(v, 2) for k, v in used_by_horizon.items()},
-        "required_transition_count": len(required_transition_groups),
-        "covered_required_transition_count": len(required_transition_groups) - len(uncovered_required_transitions),
-        "uncovered_required_transitions": uncovered_required_transitions,
-        "required_transition_budget_exception_count": 0,
+        "transition_outcomes": outcomes,
         "config": {
             "max_recommendations": cfg.max_recommendations,
             "max_candidates_per_kpi": cfg.max_candidates_per_kpi,
@@ -494,17 +368,12 @@ def optimize_recommendations(
             "max_per_kpi": cfg.max_per_kpi,
             "diversify_domains": cfg.diversify_domains,
             "min_domain_coverage": cfg.min_domain_coverage,
+            "budget_capacity": cfg.budget_capacity,
             "weights": {
                 "priority": cfg.weight_priority,
                 "impact": cfg.weight_impact,
-                "cost": cfg.weight_cost,
                 "risk": cfg.weight_risk,
                 "effort": cfg.weight_effort,
             },
-            "budget_total_clp": cfg.budget_total_clp,
-            "budget_short_clp": cfg.budget_short_clp,
-            "budget_medium_clp": cfg.budget_medium_clp,
-            "budget_long_clp": cfg.budget_long_clp,
         },
     }
-    return explained, report

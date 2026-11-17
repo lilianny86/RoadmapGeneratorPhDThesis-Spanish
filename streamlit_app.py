@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import base64
-import json
 import os
 import html
 import re
@@ -17,69 +16,31 @@ from zoneinfo import ZoneInfo
 
 import streamlit as st
 
-from pdf_export import export_friendly_pdf as export_friendly_pdf_es, export_technical_pdf
-from pdf_export_en import export_friendly_pdf as export_friendly_pdf_en
+from pdf_export import export_roadmap_pdf as export_roadmap_pdf_es
+from pdf_export_en import export_roadmap_pdf as export_roadmap_pdf_en
 from consent_export import CONSENT_VERSION, build_consent_record, consent_sections, export_consent_pdf
 from stats_export import (
-    build_kpi_statistical_csv_bytes,
-    build_kpi_statistical_records,
     build_stable_participant_code,
-    build_statistical_csv_bytes,
-    build_statistical_data_guide_csv_bytes,
+    build_statistical_csv_documents,
     build_statistical_record,
 )
-from display_format import format_clp, format_decimal, format_integer, format_percentage, format_timestamp, to_float
+from economic_policy import BUDGET_LABELS, BUDGET_OPTIONS, CATALOG_RELATIVE_PATH, economic_label
+from display_format import format_decimal, format_integer, format_percentage, format_timestamp, to_float
 from recommendation_engine import build_engine_config
-from roadmap_core import build_roadmap, load_profile_data, save_traceability_csv, save_traceability_json, save_txt
-from security_config import ENV_KEYS, load_security_config, validate_smtp_config
+from roadmap_core import build_roadmap, load_profile_data
+from security_config import ENV_KEYS, SecurityConfig, load_security_config, validate_smtp_config
 
 
 ROOT = Path(__file__).resolve().parent
 OUTPUT_UI_DIR = ROOT / "outputs" / "ui"
-BUDGET_OPTIONS_BY_COMPANY = {
-    "small": [
-        "up_to_1m",
-        "between_1m_3m",
-        "between_3m_5m",
-    ],
-    "medium": [
-        "up_to_1m",
-        "between_1m_5m",
-        "between_5m_10m",
-    ],
-}
-BUDGET_LABELS_BY_LANG = {
-    "es": {
-        "up_to_1m": "Hasta CLP $ 1.000.000,00",
-        "between_1m_3m": "Desde CLP $ 1.000.001,00 hasta CLP $ 3.000.000,00",
-        "between_3m_5m": "Desde CLP $ 3.000.001,00 hasta CLP $ 5.000.000,00",
-        "between_1m_5m": "Desde CLP $ 1.000.001,00 hasta CLP $ 5.000.000,00",
-        "between_5m_10m": "Desde CLP $ 5.000.001,00 hasta CLP $ 10.000.000,00",
-    },
-    "en": {
-        "up_to_1m": "Up to CLP $ 1.000.000,00",
-        "between_1m_3m": "From CLP $ 1.000.001,00 to CLP $ 3.000.000,00",
-        "between_3m_5m": "From CLP $ 3.000.001,00 to CLP $ 5.000.000,00",
-        "between_1m_5m": "From CLP $ 1.000.001,00 to CLP $ 5.000.000,00",
-        "between_5m_10m": "From CLP $ 5.000.001,00 to CLP $ 10.000.000,00",
-    },
-}
-BUDGET_TO_CLP = {
-    "up_to_1m": 1_000_000.0,
-    "between_1m_3m": 3_000_000.0,
-    "between_3m_5m": 5_000_000.0,
-    "between_1m_5m": 5_000_000.0,
-    "between_5m_10m": 10_000_000.0,
-}
 RUT_WIDGET_KEY = "company_rut_input"
 FLAGS_DIR = ROOT / "assets" / "localization" / "flags"
 FLAG_ES_PATH = FLAGS_DIR / "es_flag.png"
 FLAG_EN_PATH = FLAGS_DIR / "en_flag.png"
-CATALOG_PATH = ROOT / "assets" / "roadmap" / "Catalogo_Soluciones_MM_Agro_Pymes_v3-Chile - revisado expertos INIA.xlsx"
+CATALOG_PATH = ROOT / CATALOG_RELATIVE_PATH
 
 UI_TEXTS = {
     "es": {
-        "page_title": "Generador de Roadmap Personalizado | Captura",
         "setup_header": "Configuración inicial",
         "company_data_header": "Datos de la empresa",
         "company_type": "Tipo de empresa*",
@@ -109,14 +70,15 @@ UI_TEXTS = {
         "generating_overlay_title": "Generando Roadmap",
         "generating_overlay_text": "El proceso puede tardar unos segundos.",
         "generated_ok": "Roadmap generado correctamente.",
-        "current_score": "Puntaje actual",
-        "target_score": "Objetivo ajustado",
+        "progress_to_goal": "Avance hacia la meta",
+        "remaining_to_improve": "Pendiente por avanzar",
+        "progress_to_goal_help": "Progreso estimado hacia la meta de mejora seleccionada.",
+        "remaining_to_improve_help": "Parte de la meta que el roadmap busca abordar mediante acciones priorizadas.",
         "actions": "Acciones",
         "email_label": "Correo",
         "email_not_sent": "No enviado",
         "download_es": "Descargar Roadmap PDF (ES)",
         "download_en": "Descargar Roadmap PDF (EN)",
-        "select_company_type": "Seleccione el tipo de empresa en el panel de la izquierda para continuar.",
         "intro_title": "¿Qué es RoGen y cómo comenzar?",
         "intro_p1": "RoGen es una herramienta de apoyo a la toma de decisiones para pequeñas y medianas empresas agrícolas. Permite conocer el estado actual de adopción tecnológica de la empresa mediante un conjunto de indicadores de madurez previamente definidos y, a partir de este diagnóstico, generar una hoja de ruta personalizada para avanzar de manera gradual.",
         "intro_p2": "La hoja de ruta identifica las principales brechas de la empresa y propone acciones priorizadas de acuerdo con su nivel actual, la meta de madurez seleccionada, el horizonte de implementación y el presupuesto disponible. Las recomendaciones se organizan en etapas de corto, mediano y largo plazo, facilitando una implementación progresiva y acorde con la realidad de cada empresa.",
@@ -124,8 +86,6 @@ UI_TEXTS = {
         "intro_p4": "Una vez finalizado el cuestionario, RoGen genera una hoja de ruta con las acciones recomendadas y la envía al correo electrónico registrado, junto con el comprobante de consentimiento informado.",
         "cannot_load_profile": "No se pudo cargar el perfil",
         "roadmap_error": "No se pudo generar el roadmap",
-        "language_button": "English",
-        "title_company_default": "Empresa",
         "main_title": "RoGen | Generador de Roadmap Personalizado",
         "missing_company_type": "Tipo de empresa",
         "missing_company_name": "Nombre empresa",
@@ -138,33 +98,14 @@ UI_TEXTS = {
         "missing_answers_prefix": "Preguntas pendientes:",
         "smtp_missing_email": "Por favor ingresa un correo válido en Datos de la empresa (campo Correo).",
         "smtp_error_auth": "Error de autenticación SMTP. Verifica credenciales y App Password en Secrets.",
+        "smtp_error_auth_interrupted": "La conexión se interrumpió durante la autenticación SMTP. No se pudo confirmar la contraseña de aplicación.",
         "smtp_error_config": "Configuración SMTP incompleta o inválida en Secrets.",
         "smtp_error_network": "No fue posible conectar con el servidor SMTP. Intenta nuevamente.",
         "smtp_error_generic": "No fue posible enviar el correo automático.",
         "email_subject": "RoGen | Hoja de ruta personalizada para {company}",
-        "email_body": (
-            "Estimada/o representante de {company}:\n\n"
-            "Junto con saludar, agradezco su participación en el estudio doctoral "
-            "\"RoGen: Un marco de apoyo a la toma de decisiones, basado en la madurez, "
-            "para la adopción de tecnología en pymes agrícolas\".\n\n"
-            "Se adjunta la hoja de ruta personalizada de adopción tecnológica elaborada "
-            "a partir de la información proporcionada durante el diagnóstico. El documento "
-            "presenta los resultados de la evaluación y una secuencia de acciones priorizadas "
-            "de acuerdo con el nivel de madurez, el contexto organizacional y el presupuesto seleccionado.\n\n"
-            "Se espera que este material contribuya a orientar decisiones y avances graduales "
-            "en el proceso de adopción tecnológica de la empresa.\n\n"
-            "Para consultas relacionadas con el estudio o con el documento recibido, puede "
-            "contactar a la investigadora responsable respondiendo a este correo.\n\n"
-            "Atentamente,\n\n"
-            "Lilianny Marrero\n"
-            "Estudiante del Doctorado en Ingeniería Informática\n"
-            "Universidad Técnica Federico Santa María"
-        ),
         "not_sent_prefix": "No enviado",
         "sent_prefix": "Correo electrónico enviado a",
         "question_fallback": "Pregunta {qnum}",
-        "friendly_label_es": "PDF amigable ES",
-        "friendly_label_en": "PDF friendly EN",
         "consent_title": "Consentimiento informado",
         "consent_required": "Debe leer y aceptar el consentimiento informado para habilitar la configuración de la evaluación.",
         "consent_accept": "He leído y acepto voluntariamente el consentimiento informado.",
@@ -189,7 +130,6 @@ UI_TEXTS = {
         ),
     },
     "en": {
-        "page_title": "Customized Roadmap Generator | Capture",
         "setup_header": "Initial Setup",
         "company_data_header": "Company Data",
         "company_type": "Company size*",
@@ -219,14 +159,15 @@ UI_TEXTS = {
         "generating_overlay_title": "Generating Roadmap",
         "generating_overlay_text": "The process may take a few seconds.",
         "generated_ok": "Roadmap generated successfully.",
-        "current_score": "Current Score",
-        "target_score": "Adjusted Target",
+        "progress_to_goal": "Progress toward your goal",
+        "remaining_to_improve": "Still to improve",
+        "progress_to_goal_help": "Estimated progress toward the selected improvement goal.",
+        "remaining_to_improve_help": "Part of the goal that the roadmap addresses through prioritized actions.",
         "actions": "Actions",
         "email_label": "Email",
         "email_not_sent": "Not sent",
         "download_es": "Download PDF Roadmap (ES)",
         "download_en": "Download PDF Roadmap (EN)",
-        "select_company_type": "Select a company size to continue.",
         "intro_title": "What is RoGen and how do I get started?",
         "intro_p1": "RoGen is a decision-support tool for agricultural small and medium-sized enterprises. It helps identify the company’s current state of technology adoption through a set of previously defined maturity indicators and uses this assessment to generate a customized roadmap for gradual improvement.",
         "intro_p2": "The roadmap identifies the company’s main gaps and proposes prioritized actions according to its current level, selected maturity goal, implementation horizon, and available budget. Recommendations are organized into short-, medium-, and long-term stages to support a progressive implementation process aligned with each company’s circumstances.",
@@ -234,8 +175,6 @@ UI_TEXTS = {
         "intro_p4": "Once the questionnaire is completed, RoGen generates a roadmap with the recommended actions and sends it to the registered email address together with the informed-consent record.",
         "cannot_load_profile": "Unable to load profile",
         "roadmap_error": "The roadmap could not be generated",
-        "language_button": "Español",
-        "title_company_default": "Company",
         "main_title": "RoGen | Customized Roadmap Generator",
         "missing_company_type": "Company size",
         "missing_company_name": "Company name",
@@ -248,33 +187,14 @@ UI_TEXTS = {
         "missing_answers_prefix": "Unanswered questions:",
         "smtp_missing_email": "Please provide a valid email address in Company Data (Email field).",
         "smtp_error_auth": "SMTP authentication error. Check credentials and App Password in Secrets.",
+        "smtp_error_auth_interrupted": "The connection was interrupted during SMTP authentication. The app password could not be verified.",
         "smtp_error_config": "Incomplete or invalid SMTP configuration in Secrets.",
         "smtp_error_network": "Unable to connect to the SMTP server. Please try again.",
         "smtp_error_generic": "Unable to send the automated email.",
         "email_subject": "RoGen | Customized Roadmap for {company}",
-        "email_body": (
-            "Dear representative of {company}:\n\n"
-            "Thank you for participating in the doctoral study "
-            "\"RoGen: A Maturity-Based Decision Support Framework for Technology Adoption "
-            "in Agricultural SMEs\".\n\n"
-            "Attached is the customized technology-adoption roadmap prepared from the "
-            "information provided during the assessment. The document presents the evaluation "
-            "results and a sequence of prioritized actions based on the maturity level, "
-            "organizational context, and selected budget.\n\n"
-            "This material is intended to support informed decisions and gradual progress in "
-            "the company's technology-adoption process.\n\n"
-            "For questions regarding the study or the attached document, please contact the "
-            "principal researcher at lilianny.marrero@gmail.com.\n\n"
-            "Sincerely,\n\n"
-            "Lilianny Marrero\n"
-            "PhD Candidate in Computer Engineering\n"
-            "Universidad Técnica Federico Santa María"
-        ),
         "not_sent_prefix": "Not sent",
         "sent_prefix": "Email sent to",
         "question_fallback": "Question {qnum}",
-        "friendly_label_es": "Friendly PDF ES",
-        "friendly_label_en": "Friendly PDF EN",
         "consent_title": "Informed consent",
         "consent_required": "Read and accept the informed consent to enable the assessment configuration.",
         "consent_accept": "I have read and voluntarily accept the informed consent.",
@@ -316,12 +236,12 @@ def _t(lang: str, key: str, **kwargs: object) -> str:
 
 
 def _budget_labels(lang: str) -> dict[str, str]:
-    return BUDGET_LABELS_BY_LANG[_lang(lang)]
+    return BUDGET_LABELS[_lang(lang)]
 
 
 def _budget_options(company_type: str) -> list[str]:
     key = "small" if str(company_type).strip().lower() == "small" else "medium"
-    return BUDGET_OPTIONS_BY_COMPANY[key]
+    return list(BUDGET_OPTIONS[key])
 
 
 def _budget_radio_label(value: object, labels: dict[str, str]) -> str:
@@ -382,202 +302,6 @@ def _render_language_flag(language: str) -> None:
     )
 
 
-def _apply_no_translate_guard(language: str) -> None:
-    lang = _lang(language)
-    nonce = datetime.now().strftime("%Y%m%d%H%M%S%f")
-    try:
-        st.html(
-            f"""
-<script>
-(function () {{
-  try {{
-    const doc = document;
-
-    // Remove stale language switch nodes injected by older versions in the Streamlit header.
-    doc.querySelectorAll('#rogen-header-lang-switch').forEach((el) => el.remove());
-
-    const html = doc.documentElement;
-    const body = doc.body;
-    if (html) {{
-      html.setAttribute("lang", "{lang}");
-      html.setAttribute("translate", "no");
-      html.classList.add("notranslate");
-    }}
-    if (body) {{
-      body.setAttribute("translate", "no");
-      body.classList.add("notranslate");
-    }}
-
-    const app = doc.querySelector(".stApp");
-    if (app) {{
-      app.setAttribute("translate", "no");
-      app.classList.add("notranslate");
-    }}
-
-    let gMeta = doc.querySelector('meta[name="google"]');
-    if (!gMeta) {{
-      gMeta = doc.createElement("meta");
-      gMeta.setAttribute("name", "google");
-      doc.head.appendChild(gMeta);
-    }}
-    gMeta.setAttribute("content", "notranslate");
-
-    let gbMeta = doc.querySelector('meta[name="googlebot"]');
-    if (!gbMeta) {{
-      gbMeta = doc.createElement("meta");
-      gbMeta.setAttribute("name", "googlebot");
-      doc.head.appendChild(gbMeta);
-    }}
-    gbMeta.setAttribute("content", "notranslate");
-
-    const keep = [
-      ".stApp",
-      '[data-testid="stAppViewContainer"]',
-      '[data-testid="stHeader"]',
-      '[data-testid="stSidebar"]',
-      '[data-testid="stMainBlockContainer"]',
-      ".lang-code-chip"
-    ];
-    keep.forEach((selector) => {{
-      doc.querySelectorAll(selector).forEach((el) => {{
-        el.setAttribute("translate", "no");
-        el.classList.add("notranslate");
-      }});
-    }});
-
-
-
-    const hideHeaderActions = () => {{
-      const header = doc.querySelector('[data-testid="stHeader"]');
-      if (!header) return;
-
-      const toolbar = header.querySelector('[data-testid="stToolbar"]');
-      if (toolbar) {{
-        // The native sidebar restore control belongs to this toolbar. The
-        // observer below hides only administrative Cloud actions.
-        toolbar.style.pointerEvents = 'auto';
-        toolbar.style.zIndex = '1';
-      }}
-
-      const nodes = header.querySelectorAll("a, button, [role='button'], div, span");
-      nodes.forEach((node) => {{
-        const text = (node.textContent || "").trim().toLowerCase();
-        const title = ((node.getAttribute("title") || "") + " " + (node.getAttribute("aria-label") || "")).toLowerCase();
-        const href = (node.getAttribute("href") || "").toLowerCase();
-        const signature = `${{text}} ${{title}} ${{href}}`;
-        const isSidebarControl = title.includes("sidebar") || title.includes("barra lateral") || node.closest('[data-testid="collapsedControl"]') || node.closest('[data-testid="stSidebarCollapsedControl"]');
-        const isLanguageSwitch = node.closest("#rogen-header-lang-switch") || node.getAttribute("data-rogen-lang-switch") === "1";
-        const isCloudAction = signature.includes("deploy") || signature.includes("fork") || signature.includes("github") || signature.includes("manage app") || signature.includes("share") || signature.includes("settings") || signature.includes("analytics") || signature.includes("reboot app") || signature.includes("delete app");
-        if (isLanguageSwitch) {{
-          node.style.display = "";
-          node.style.pointerEvents = "auto";
-          return;
-        }}
-        if (isSidebarControl) {{
-          const target = node.closest('[data-testid="collapsedControl"], [data-testid="stSidebarCollapsedControl"], button, [role="button"]') || node;
-          target.style.display = "flex";
-          target.style.visibility = "visible";
-          target.style.opacity = "1";
-          target.style.pointerEvents = "auto";
-          return;
-        }}
-        if (!isSidebarControl && isCloudAction) {{
-          const target = node.closest("a, button, [role='button']") || node;
-          target.style.display = "none";
-          target.style.visibility = "hidden";
-          target.style.pointerEvents = "none";
-        }}
-      }});
-    }};
-    hideHeaderActions();
-    setTimeout(hideHeaderActions, 40);
-    setTimeout(hideHeaderActions, 160);
-    setTimeout(hideHeaderActions, 500);
-    setTimeout(hideHeaderActions, 1200);
-
-    const hideCloudProfileBadge = () => {{
-      const styleId = "rogen-hide-cloud-profile-badge";
-      let style = doc.getElementById(styleId);
-      if (!style) {{
-        style = doc.createElement("style");
-        style.id = styleId;
-        doc.head.appendChild(style);
-      }}
-      style.textContent = `
-        [data-testid="stStatusWidget"],
-        [data-testid="stAppDeployButton"],
-        [data-testid="stMainMenu"],
-        [class*="viewerBadge" i],
-        [class*="viewer-badge" i],
-        [class*="profileBadge" i],
-        [data-testid*="viewerbadge" i],
-        [data-testid*="viewer-badge" i] {{
-          display: none !important;
-          visibility: hidden !important;
-          pointer-events: none !important;
-        }}
-      `;
-
-      doc.querySelectorAll('a[href*="streamlit.io"], a[href*="streamlit.app"]').forEach((link) => {{
-        if (!link.querySelector("img")) return;
-        const rect = link.getBoundingClientRect();
-        const viewportWidth = doc.documentElement.clientWidth;
-        const viewportHeight = doc.documentElement.clientHeight;
-        const isLowerRight = rect.right >= viewportWidth - 280 && rect.bottom >= viewportHeight - 180;
-        if (!isLowerRight) return;
-
-        const parent = link.parentElement;
-        const parentRect = parent ? parent.getBoundingClientRect() : null;
-        const target = parentRect && parentRect.width <= 360 && parentRect.height <= 160 ? parent : link;
-        target.style.setProperty("display", "none", "important");
-        target.style.setProperty("visibility", "hidden", "important");
-        target.style.setProperty("pointer-events", "none", "important");
-      }});
-    }};
-    hideCloudProfileBadge();
-    setTimeout(hideCloudProfileBadge, 80);
-    setTimeout(hideCloudProfileBadge, 400);
-    setTimeout(hideCloudProfileBadge, 1200);
-
-    const headerForObserver = doc.querySelector('[data-testid="stHeader"]');
-    if (headerForObserver && !headerForObserver.dataset.rogenHeaderObserver) {{
-      headerForObserver.dataset.rogenHeaderObserver = "1";
-      const observer = new MutationObserver(() => hideHeaderActions());
-      observer.observe(headerForObserver, {{ childList: true, subtree: true, attributes: true }});
-    }}
-
-    if (doc.body && !doc.body.dataset.rogenProfileBadgeObserver) {{
-      doc.body.dataset.rogenProfileBadgeObserver = "1";
-      const profileBadgeObserver = new MutationObserver(() => hideCloudProfileBadge());
-      profileBadgeObserver.observe(doc.body, {{ childList: true, subtree: true }});
-    }}
-
-    doc.querySelectorAll('input[aria-label^="RUT"], input[placeholder*="123456785"]').forEach((el) => {{
-      el.setAttribute("translate", "no");
-      el.classList.add("notranslate");
-    }});
-
-    doc.querySelectorAll("label, span, p, div").forEach((el) => {{
-      const txt = (el.textContent || "").trim().toUpperCase();
-      if (txt.startsWith("RUT")) {{
-        el.setAttribute("translate", "no");
-        el.classList.add("notranslate");
-      }}
-    }});
-  }} catch (e) {{
-    console.warn("No-translate guard error:", e);
-  }}
-}})();
-</script>
-<div style="display:none" aria-hidden="true">{nonce}</div>
-            """,
-            unsafe_allow_javascript=True,
-        )
-    except Exception:
-        # This is a cosmetic browser guard; it must never prevent the assessment UI from rendering.
-        return
-
-
 def _company_name_for_filename(value: str) -> str:
     text = unicodedata.normalize("NFC", str(value or "")).strip()
     text = re.sub(r'[<>:"/\\|?*\x00-\x1F]+', "", text)
@@ -585,7 +309,7 @@ def _company_name_for_filename(value: str) -> str:
     return (text or "Company").upper()
 
 
-def _friendly_pdf_filename(company_type: str, company_name: str, generated_at: datetime, language: str) -> str:
+def _roadmap_pdf_filename(company_type: str, company_name: str, generated_at: datetime, language: str) -> str:
     prefix = "ME" if str(company_type) == "medium" else "PE"
     stamp = generated_at.strftime("%Y%m%d_%H%M")
     lang_tag = "EN" if _lang(language) == "en" else "ES"
@@ -1456,10 +1180,10 @@ h1, h2, h3 {
 }
 
 /* Keep every budget-range label legible and numerically consistent. */
-[class*="st-key-budget_total_"] label,
-[class*="st-key-budget_total_"] label p,
-[class*="st-key-budget_total_"] label span,
-[class*="st-key-budget_total_"] label div {
+[class*="st-key-budget_capacity_"] label,
+[class*="st-key-budget_capacity_"] label p,
+[class*="st-key-budget_capacity_"] label span,
+[class*="st-key-budget_capacity_"] label div {
   font-size: 0.94rem !important;
   line-height: 1.35 !important;
   font-variant-numeric: tabular-nums !important;
@@ -1921,7 +1645,7 @@ def _render_sidebar(profile: dict[str, object], max_level: int, language: str, c
         options=budget_options,
         index=None,
         format_func=lambda key: _budget_radio_label(key, budget_labels),
-        key=f"budget_total_{company_type}",
+        key=f"budget_capacity_{company_type}",
     )
     st.sidebar.markdown(f"<div class='sidebar-required-note'>{html.escape(_t(language, 'required_note'))}</div>", unsafe_allow_html=True)
 
@@ -1937,8 +1661,6 @@ def _render_sidebar(profile: dict[str, object], max_level: int, language: str, c
         "company_rut": company_rut,
         "company_email": company_email,
         "target_level": target_level,
-        "budget_total_label": budget_labels.get(str(budget_total_key), ""),
-        "budget_total_clp": BUDGET_TO_CLP.get(str(budget_total_key)),
         "budget_range": str(budget_total_key or ""),
         "profile_label": localized_profile_label,
     }
@@ -1964,10 +1686,7 @@ def _missing_question_numbers(company_type: str, questions: list[dict[str, Any]]
 
 
 def _build_overrides(ui_cfg: dict[str, object]) -> dict[str, Any]:
-    budget_total = ui_cfg.get("budget_total_clp")
-    return {
-        "budget_total_clp": float(budget_total) if budget_total is not None else None,
-    }
+    return {"budget_capacity": str(ui_cfg.get("budget_range", ""))}
 
 
 def _missing_required_company_fields(company_type: str, ui_cfg: dict[str, object], language: str) -> list[str]:
@@ -2075,6 +1794,33 @@ def _merge_smtp_config_from_streamlit_secrets(cfg: object) -> object:
     return cfg
 
 
+def _deliver_smtp_message(cfg: SecurityConfig, message: EmailMessage) -> None:
+    phase = "connection"
+    try:
+        with smtplib.SMTP(cfg.smtp_host, cfg.smtp_port, timeout=30) as smtp:
+            phase = "tls"
+            smtp.starttls(context=ssl.create_default_context())
+            phase = "authentication"
+            if cfg.smtp_host.lower() == "smtp.gmail.com":
+                smtp.ehlo_or_helo_if_needed()
+            if cfg.smtp_host.lower() == "smtp.gmail.com" and "LOGIN" in smtp.esmtp_features.get("auth", "").upper().split():
+                smtp.user = cfg.smtp_user
+                smtp.password = cfg.smtp_password
+                smtp.auth("LOGIN", smtp.auth_login, initial_response_ok=False)
+            else:
+                smtp.login(cfg.smtp_user, cfg.smtp_password)
+            phase = "delivery"
+            smtp.send_message(message)
+            phase = "disconnect"
+    except (smtplib.SMTPException, OSError) as exc:
+        exc.add_note(f"smtp_phase={phase}")
+        raise
+
+
+def _smtp_failure_phase(exc: Exception) -> str:
+    return next((note.split("=", 1)[1] for note in getattr(exc, "__notes__", []) if note.startswith("smtp_phase=")), "")
+
+
 def _safe_smtp_error_message(exc: Exception, language: str) -> str:
     if isinstance(exc, RuntimeError):
         lower = str(exc).lower()
@@ -2085,6 +1831,8 @@ def _safe_smtp_error_message(exc: Exception, language: str) -> str:
         return _t(language, "smtp_error_auth")
 
     if isinstance(exc, (smtplib.SMTPConnectError, smtplib.SMTPServerDisconnected, TimeoutError, ConnectionError, OSError)):
+        if _smtp_failure_phase(exc) == "authentication":
+            return _t(language, "smtp_error_auth_interrupted")
         return _t(language, "smtp_error_network")
 
     if isinstance(exc, smtplib.SMTPException):
@@ -2102,7 +1850,9 @@ def _safe_smtp_console_diagnostic(exc: Exception) -> str:
         r"\1\2<oculto>",
         detail,
     )
-    return f"{type(exc).__name__}: {detail or 'sin detalle entregado por el servidor'}"
+    phase = _smtp_failure_phase(exc)
+    context = f" (fase SMTP: {phase})" if phase else ""
+    return f"{type(exc).__name__}{context}: {detail or 'sin detalle entregado por el servidor'}"
 
 
 def _send_pdfs_via_gmail(
@@ -2112,7 +1862,6 @@ def _send_pdfs_via_gmail(
     company_email: str,
     pdf_paths: list[Path],
     language: str,
-    include_consent: bool = False,
 ) -> list[str]:
     cfg, _ = load_security_config(root)
     cfg = _merge_smtp_config_from_streamlit_secrets(cfg)
@@ -2138,8 +1887,7 @@ def _send_pdfs_via_gmail(
     msg["Subject"] = _t(language, "email_subject", company=company_name)
     msg["From"] = cfg.smtp_from
     msg["To"] = ", ".join(targets)
-    body_key = "email_body_with_consent" if include_consent else "email_body"
-    msg.set_content(_t(language, body_key, company=company_name))
+    msg.set_content(_t(language, "email_body_with_consent", company=company_name))
 
     for pdf_path in pdf_paths:
         if not pdf_path.exists():
@@ -2151,10 +1899,7 @@ def _send_pdfs_via_gmail(
             filename=pdf_path.name,
         )
 
-    with smtplib.SMTP(cfg.smtp_host, cfg.smtp_port, timeout=30) as smtp:
-        smtp.starttls(context=ssl.create_default_context())
-        smtp.login(cfg.smtp_user, cfg.smtp_password)
-        smtp.send_message(msg)
+    _deliver_smtp_message(cfg, msg)
     return targets
 
 
@@ -2198,7 +1943,8 @@ def _statistical_email_body(
         str(record.get("budget_range_code", "")),
         str(record.get("budget_range", "")) or "-",
     )
-    budget_usage = to_float(record.get("budget_utilization_ratio")) * 100
+    capacity_code = str(record.get("budget_range_code", "")).rsplit("_", 1)[-1]
+    capacity_label = economic_label(capacity_code, "en") if selected_language == "en" else record.get("budget_capacity", "")
 
     if selected_language == "en":
         return (
@@ -2228,12 +1974,13 @@ def _statistical_email_body(
             f"KPIs at or above target: {format_integer(record.get('kpis_at_or_above_target', 0))}\n\n"
             "ROADMAP SUMMARY\n"
             f"Selected budget range: {budget_label}\n"
-            f"Budget cap: {format_clp(record.get('budget_cap_clp'), 'Not available')}\n"
-            f"Budget used: {format_clp(record.get('engine_used_budget_clp'), 'Not available')} ({format_decimal(budget_usage)}%)\n"
-            f"Budget remaining: {format_clp(record.get('budget_remaining_clp'), 'Not available')}\n"
+            f"Relative budget capacity: {capacity_label}\n"
+            f"Compatible actions: {format_integer(record.get('compatible_actions', 0))}\n"
+            f"Conditional on economic effort: {format_integer(record.get('effort_conditional_actions', 0))}\n"
+            f"Co-financing / quotation required: {format_integer(record.get('cofinancing_actions', 0))} / {format_integer(record.get('quotation_actions', 0))}\n"
             f"Selected recommendations: {format_integer(record.get('recommendations_total', 0))}\n"
             f"Short / medium / long term: {format_integer(record.get('short_term_count', 0))} / {format_integer(record.get('medium_term_count', 0))} / {format_integer(record.get('long_term_count', 0))}\n"
-            f"Required / covered transitions: {format_integer(record.get('required_transitions_total', 0))} / {format_integer(record.get('covered_transitions_total', 0))}\n"
+            f"Required / compatible / conditional transitions: {format_integer(record.get('required_transitions_total', 0))} / {format_integer(record.get('covered_transitions_total', 0))} / {format_integer(record.get('conditional_transitions_total', 0))}\n"
             f"Recommendation engine version: {record.get('engine_version', '')}\n"
             f"Catalog version: {record.get('catalog_schema_version', '')}\n\n"
             "Attached files: pseudonymized statistical summary, KPI detail, and the variable guide."
@@ -2266,12 +2013,13 @@ def _statistical_email_body(
         f"KPI en o sobre la meta: {format_integer(record.get('kpis_at_or_above_target', 0))}\n\n"
         "RESUMEN DEL ROADMAP\n"
         f"Rango de presupuesto seleccionado: {budget_label}\n"
-        f"Tope de presupuesto: {format_clp(record.get('budget_cap_clp'), 'No disponible')}\n"
-        f"Presupuesto usado: {format_clp(record.get('engine_used_budget_clp'), 'No disponible')} ({format_decimal(budget_usage)}%)\n"
-        f"Presupuesto remanente: {format_clp(record.get('budget_remaining_clp'), 'No disponible')}\n"
+        f"Capacidad presupuestaria relativa: {capacity_label}\n"
+        f"Acciones compatibles: {format_integer(record.get('compatible_actions', 0))}\n"
+        f"Condicionadas al esfuerzo económico: {format_integer(record.get('effort_conditional_actions', 0))}\n"
+        f"Sujetas a cofinanciamiento / cotización: {format_integer(record.get('cofinancing_actions', 0))} / {format_integer(record.get('quotation_actions', 0))}\n"
         f"Recomendaciones seleccionadas: {format_integer(record.get('recommendations_total', 0))}\n"
         f"Acciones corto / mediano / largo plazo: {format_integer(record.get('short_term_count', 0))} / {format_integer(record.get('medium_term_count', 0))} / {format_integer(record.get('long_term_count', 0))}\n"
-        f"Transiciones requeridas / cubiertas: {format_integer(record.get('required_transitions_total', 0))} / {format_integer(record.get('covered_transitions_total', 0))}\n"
+        f"Transiciones requeridas / compatibles / condicionadas: {format_integer(record.get('required_transitions_total', 0))} / {format_integer(record.get('covered_transitions_total', 0))} / {format_integer(record.get('conditional_transitions_total', 0))}\n"
         f"Versión del motor de recomendaciones: {record.get('engine_version', '')}\n"
         f"Versión del catálogo: {record.get('catalog_schema_version', '')}\n\n"
         "Se adjuntan el resumen estadístico seudonimizado, el detalle por KPI y la guía de variables."
@@ -2284,9 +2032,7 @@ def _send_statistical_csv_via_gmail(
     record: dict[str, object],
     payload: dict[str, object],
     consent_record: dict[str, object],
-    summary_csv_bytes: bytes,
-    kpi_csv_bytes: bytes,
-    guide_csv_bytes: bytes,
+    documents: dict[str, bytes],
     language: str,
 ) -> str:
     cfg, _ = load_security_config(root)
@@ -2313,99 +2059,56 @@ def _send_statistical_csv_via_gmail(
     msg["From"] = cfg.smtp_from
     msg["To"] = recipient
     msg.set_content(_statistical_email_body(record, payload, consent_record, language))
-    msg.add_attachment(
-        summary_csv_bytes,
-        maintype="text",
-        subtype="csv",
-        filename=f"rogen_estadisticas_resumen_{case_id}.csv",
-    )
-    msg.add_attachment(
-        kpi_csv_bytes,
-        maintype="text",
-        subtype="csv",
-        filename=f"rogen_estadisticas_detalle_kpi_{case_id}.csv",
-    )
-    msg.add_attachment(
-        guide_csv_bytes,
-        maintype="text",
-        subtype="csv",
-        filename="rogen_estadisticas_guia_de_variables.csv",
-    )
+    for filename, content in documents.items():
+        msg.add_attachment(content, maintype="text", subtype="csv", filename=filename)
 
-    with smtplib.SMTP(cfg.smtp_host, cfg.smtp_port, timeout=30) as smtp:
-        smtp.starttls(context=ssl.create_default_context())
-        smtp.login(cfg.smtp_user, cfg.smtp_password)
-        smtp.send_message(msg)
+    _deliver_smtp_message(cfg, msg)
     return recipient
 
 
 def _render_downloads(result: dict[str, object], language: str) -> None:
-    files: dict[str, str] = result.get("files", {}) if isinstance(result, dict) else {}
-    pdf_es: Path | None = None
-    pdf_en: Path | None = None
-    consent_pdf: Path | None = None
-    for path_str in files.values():
-        path = Path(path_str)
-        if not path.exists() or path.suffix.lower() != ".pdf":
-            continue
-        name_txt = path.name.lower()
-        # Consent records can also end in _es.pdf or _en.pdf. Classify them
-        # first so they never replace a roadmap download.
-        if name_txt.startswith("consent_"):
-            consent_pdf = path
-            continue
-        if name_txt.endswith("_es.pdf"):
-            pdf_es = path
-        if name_txt.endswith("_en.pdf"):
-            pdf_en = path
-
-    if pdf_es is None and pdf_en is None and consent_pdf is None:
+    files = result.get("files")
+    if not isinstance(files, dict) or not files:
         return
-
-    col_es, col_en, col_consent = st.columns(3)
-    if pdf_es is not None:
-        with col_es:
+    download_roles = (
+        ("roadmap_es", "download_es", "download_roadmap_es"),
+        ("roadmap_en", "download_en", "download_roadmap_en"),
+        ("consent", "consent_download", "download_consent"),
+    )
+    for col, (role, label, key) in zip(st.columns(3), download_roles):
+        file_path = files.get(role)
+        if not file_path:
+            continue
+        pdf = Path(file_path)
+        if pdf.suffix.lower() != ".pdf" or not pdf.is_file():
+            continue
+        with col:
             st.download_button(
-                label=_t(language, "download_es"),
-                data=pdf_es.read_bytes(),
-                file_name=pdf_es.name,
+                label=_t(language, label),
+                data=pdf.read_bytes(),
+                file_name=pdf.name,
                 mime="application/pdf",
+                on_click="ignore",
+                key=key,
                 use_container_width=True,
             )
-    if pdf_en is not None:
-        with col_en:
-            st.download_button(
-                label=_t(language, "download_en"),
-                data=pdf_en.read_bytes(),
-                file_name=pdf_en.name,
-                mime="application/pdf",
-                use_container_width=True,
-            )
-    if consent_pdf is not None:
-        with col_consent:
-            st.download_button(
-                label=_t(language, "consent_download"),
-                data=consent_pdf.read_bytes(),
-                file_name=consent_pdf.name,
-                mime="application/pdf",
-                use_container_width=True,
-            )
-
-
-def _score_to_float(value: object) -> float:
-    return to_float(value)
-
-
-def _format_score(value: object, language: str) -> str:
-    _ = language
-    return format_decimal(value)
 
 
 def _render_last_result_summary(last: dict[str, object], language: str) -> None:
     st.success(_t(language, "generated_ok"))
+    progress_pct = min(max(to_float(last.get("target_progress_pct", 0)), 0.0), 100.0)
+    pending_pct = 100.0 - progress_pct
     m1, m2, m3 = st.columns(3)
-    m1.metric(_t(language, "current_score"), _format_score(last.get("current_score", 0), language))
-    m2.metric(_t(language, "target_score"), _format_score(last.get("target_score", 0), language))
+    m1.metric(
+        _t(language, "progress_to_goal"),
+        format_percentage(progress_pct),
+        help=_t(language, "progress_to_goal_help"),
+    )
+    m2.metric(
+        _t(language, "remaining_to_improve"),
+        format_percentage(pending_pct),
+        help=_t(language, "remaining_to_improve_help"),
+    )
     m3.metric(_t(language, "actions"), format_integer(last.get("actions", 0)))
     status_text_raw = str(last.get("email_status", _t(language, "email_not_sent")))
     status_label = html.escape(_t(language, "email_label"))
@@ -2482,45 +2185,6 @@ def _render_main_title(language: str, company_type_label: str = "") -> None:
         f"<section class='app-title-band'><h1>{html.escape(title)}</h1></section>",
         unsafe_allow_html=True,
     )
-
-
-def _scroll_to_result_once() -> None:
-    if not bool(st.session_state.get("scroll_to_top_result", False)):
-        return
-    nonce = int(st.session_state.get("scroll_to_top_nonce", 0))
-    js_block = """
-<script>
-const smoothScrollTop = () => {
-  try {
-    const doc = document;
-    const anchor = doc.getElementById("rogen-result-anchor");
-    if (anchor && anchor.scrollIntoView) {
-      anchor.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-    const targets = [
-      doc.querySelector("section.main"),
-      doc.querySelector(".main"),
-      doc.querySelector('[data-testid="stMain"]'),
-      doc.querySelector('[data-testid="stAppViewContainer"]')
-    ].filter(Boolean);
-    targets.forEach((el) => {
-      if (anchor && el.contains(anchor)) return;
-      if (el.scrollTo) el.scrollTo({ top: Math.max((el.scrollTop || 0) - 8, 0), behavior: "smooth" });
-    });
-    if (!anchor) window.scrollTo({ top: 0, behavior: "smooth" });
-  } catch (_) {}
-};
-setTimeout(smoothScrollTop, 30);
-setTimeout(smoothScrollTop, 160);
-setTimeout(smoothScrollTop, 360);
-</script>
-<div style="display:none">scroll-nonce-__NONCE__</div>
-    """
-    st.html(
-        js_block.replace("__NONCE__", str(nonce)),
-        unsafe_allow_javascript=True,
-    )
-    st.session_state["scroll_to_top_result"] = False
 
 
 def _scroll_to_questionnaire_once() -> None:
@@ -2752,18 +2416,13 @@ def main() -> None:
                 run_dir = OUTPUT_UI_DIR / f"{case_name}_{stamp}"
                 run_dir.mkdir(parents=True, exist_ok=True)
 
-                result_json = run_dir / "roadmap_result.json"
-                result_txt = run_dir / "roadmap_result.txt"
-                result_trace_json = run_dir / "roadmap_traceability.json"
-                result_trace_csv = run_dir / "roadmap_traceability.csv"
-                result_pdf_tech = run_dir / "roadmap_tecnico.pdf"
-                result_pdf_es = run_dir / _friendly_pdf_filename(
+                result_pdf_es = run_dir / _roadmap_pdf_filename(
                     company_type=company_type,
                     company_name=str(ui_cfg["company_name"]),
                     generated_at=generated_at,
                     language="es",
                 )
-                result_pdf_en = run_dir / _friendly_pdf_filename(
+                result_pdf_en = run_dir / _roadmap_pdf_filename(
                     company_type=company_type,
                     company_name=str(ui_cfg["company_name"]),
                     generated_at=generated_at,
@@ -2782,50 +2441,13 @@ def main() -> None:
                     company_rut=str(ui_cfg["company_rut"]),
                     contact_email=_consent_contact_email(ROOT),
                 )
-                result_consent_json = run_dir / "consent_record.json"
                 result_consent_pdf = run_dir / f"consent_{case_name}_{stamp}_{consent_language}.pdf"
 
-                payload_export = dict(payload_selected)
-                payload_export.pop("catalog_validation_report", None)
-                result_json.write_text(json.dumps(payload_export, ensure_ascii=False, indent=2), encoding="utf-8")
-                result_consent_json.write_text(json.dumps(consent_record, ensure_ascii=False, indent=2), encoding="utf-8")
-                save_txt(payload_selected, result_txt)
-                save_traceability_json(payload_selected, result_trace_json)
-                save_traceability_csv(payload_selected, result_trace_csv)
-
-                generated_files = {
-                    "JSON": str(result_json),
-                    "TXT": str(result_txt),
-                    "Traceability JSON": str(result_trace_json),
-                    "Traceability CSV": str(result_trace_csv),
-                    "Consent record JSON": str(result_consent_json),
-                }
-
-                export_technical_pdf(payload_selected, result_pdf_tech)
-                export_friendly_pdf_es(payload_es, result_pdf_es)
-                export_friendly_pdf_en(payload_en, result_pdf_en)
+                export_roadmap_pdf_es(payload_es, result_pdf_es)
+                export_roadmap_pdf_en(payload_en, result_pdf_en)
                 export_consent_pdf(consent_record, result_consent_pdf)
-                generated_files["Technical PDF"] = str(result_pdf_tech)
-                generated_files[_t(language, "friendly_label_es")] = str(result_pdf_es)
-                generated_files[_t(language, "friendly_label_en")] = str(result_pdf_en)
-                generated_files[_t(language, "consent_download")] = str(result_consent_pdf)
 
-                selected_pdf = result_pdf_en if language == "en" else result_pdf_es
-                email_status = _t(language, "email_not_sent")
-                try:
-                    recipients = _send_pdfs_via_gmail(
-                        root=ROOT,
-                        company_name=str(ui_cfg["company_name"]),
-                        company_email=str(ui_cfg["company_email"]),
-                        pdf_paths=[selected_pdf, result_consent_pdf],
-                        language=language,
-                        include_consent=True,
-                    )
-                    email_status = f"{_t(language, 'sent_prefix')}: {', '.join(recipients)}"
-                except Exception as email_exc:
-                    safe_error = _safe_smtp_error_message(email_exc, language)
-                    email_status = f"{_t(language, 'not_sent_prefix')}: {safe_error}"
-
+                statistics = None
                 try:
                     stats_record = build_statistical_record(
                         payload_es,
@@ -2837,39 +2459,61 @@ def main() -> None:
                         ),
                         generated_at=generated_at,
                     )
-                    stats_summary_csv = build_statistical_csv_bytes(stats_record)
-                    stats_kpi_records = build_kpi_statistical_records(payload_es, stats_record)
-                    stats_kpi_csv = build_kpi_statistical_csv_bytes(stats_kpi_records)
-                    stats_guide_csv = build_statistical_data_guide_csv_bytes()
-                    _send_statistical_csv_via_gmail(
+                    documents = build_statistical_csv_documents(payload_es, stats_record)
+                    for filename, content in documents.items():
+                        (run_dir / filename).write_bytes(content)
+                    statistics = stats_record, documents
+                except OSError as stats_exc:
+                    print(f"RoGen statistical CSVs not saved: [{type(stats_exc).__name__}, errno={stats_exc.errno}]")
+                except Exception as stats_exc:
+                    print(f"RoGen statistical CSVs not saved: [{_safe_smtp_console_diagnostic(stats_exc)}]")
+
+                selected_pdf = result_pdf_en if language == "en" else result_pdf_es
+                email_status = _t(language, "email_not_sent")
+                try:
+                    recipients = _send_pdfs_via_gmail(
                         root=ROOT,
-                        record=stats_record,
-                        payload=payload_es,
-                        consent_record=consent_record,
-                        summary_csv_bytes=stats_summary_csv,
-                        kpi_csv_bytes=stats_kpi_csv,
-                        guide_csv_bytes=stats_guide_csv,
+                        company_name=str(ui_cfg["company_name"]),
+                        company_email=str(ui_cfg["company_email"]),
+                        pdf_paths=[selected_pdf, result_consent_pdf],
                         language=language,
                     )
-                except Exception as stats_exc:
-                    print(
-                        "RoGen statistical CSV email not sent: "
-                        f"{_safe_smtp_error_message(stats_exc, language)} "
-                        f"[{_safe_smtp_console_diagnostic(stats_exc)}]"
-                    )
+                    email_status = f"{_t(language, 'sent_prefix')}: {', '.join(recipients)}"
+                except Exception as email_exc:
+                    safe_error = _safe_smtp_error_message(email_exc, language)
+                    email_status = f"{_t(language, 'not_sent_prefix')}: {safe_error}"
+                    print(f"RoGen participant email not sent: {safe_error} [{_safe_smtp_console_diagnostic(email_exc)}]")
+
+                if statistics is not None:
+                    stats_record, documents = statistics
+                    try:
+                        _send_statistical_csv_via_gmail(
+                            root=ROOT,
+                            record=stats_record,
+                            payload=payload_es,
+                            consent_record=consent_record,
+                            documents=documents,
+                            language=language,
+                        )
+                    except Exception as stats_exc:
+                        print(
+                            "RoGen statistical CSV email not sent: "
+                            f"{_safe_smtp_error_message(stats_exc, language)} "
+                            f"[{_safe_smtp_console_diagnostic(stats_exc)}]"
+                        )
 
                 result = payload_selected.get("result", {})
                 st.session_state["ui_last_result"] = {
-                    "files": generated_files,
-                    "generated_at": result.get("timestamp", ""),
-                    "current_score": round(_score_to_float(result.get("current_score", 0)), 2),
-                    "target_score": result.get("target_score", 0),
+                    "files": {
+                        "roadmap_es": str(result_pdf_es),
+                        "roadmap_en": str(result_pdf_en),
+                        "consent": str(result_consent_pdf),
+                    },
+                    "target_progress_pct": result.get("target_progress_pct", 0),
                     "actions": len(result.get("roadmap_entries", [])),
                     "email_status": email_status,
                     "language": language,
                 }
-                st.session_state["scroll_to_top_result"] = True
-                st.session_state["scroll_to_top_nonce"] = int(st.session_state.get("scroll_to_top_nonce", 0)) + 1
 
         except Exception as exc:
             st.error(f"{_t(language, 'roadmap_error')}: {exc}")
@@ -2877,7 +2521,6 @@ def main() -> None:
             overlay_slot.empty()
 
     if "ui_last_result" in st.session_state:
-        st.markdown('<div id="rogen-result-anchor"></div>', unsafe_allow_html=True)
         current_lang = _lang(str(st.session_state["ui_last_result"].get("language", language)))
         _render_last_result_summary(st.session_state["ui_last_result"], current_lang)
         _render_downloads(st.session_state["ui_last_result"], current_lang)

@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import json
 import re
 import unicodedata
-from pathlib import Path
 
 
 def _norm_key(text: str) -> str:
@@ -11,43 +9,16 @@ def _norm_key(text: str) -> str:
     return re.sub(r"\s+", " ", t).strip().lower()
 
 
-_QUESTION_CORE_EN_RAW = {
-    "que tipo de sistema de riego utiliza actualmente en su unidad productiva?": "What type of irrigation system do you currently use in your production unit?",
-    "como define los horarios y la duracion del riego en el campo?": "How do you define irrigation schedules and duration in the field?",
-    "como gestiona actualmente los inventarios de insumos, herramientas o productos agricolas (inventarios)?": "How do you currently manage inventories of agricultural inputs, tools, or products?",
-    "como realiza actualmente el control de insumos y productos en su campo (inventarios)?": "How do you currently control inputs and products in your field (inventory)?",
-    "como mide o estima la cantidad de agua que utiliza para riego": "How do you measure or estimate the amount of water used for irrigation?",
-    "como mide o estima la cantidad de agua que utiliza para riego?": "How do you measure or estimate the amount of water used for irrigation?",
-    "como esta estructurado el sistema de distribucion de agua en el campo?": "How is the field water distribution system structured?",
-    "como registra actualmente la cantidad de produccion generada diariamente en su campo?": "How do you currently record the amount of production generated daily in your field?",
-    "como registra y analiza la produccion agricola diaria en su empresa?": "How do you record and analyze daily agricultural production in your company?",
-    "como evalua el rendimiento de su produccion agricola?": "How do you evaluate your agricultural production performance?",
-    "que nivel de conocimiento tiene sobre los requisitos de certificacion agricola?": "What is your level of knowledge of agricultural certification requirements?",
-    "cual es el nivel de conocimiento y aplicacion de certificaciones en su empresa agricola?": "What is the level of knowledge and application of certifications in your agricultural company?",
-    "cual es su nivel de conocimiento o experiencia con procesos de exportacion agricola?": "What is your level of knowledge or experience with agricultural export processes?",
-    "cual es el nivel de conocimiento y participacion en procesos de exportacion de su empresa?": "What is your company's level of knowledge and participation in export processes?",
-    "como realiza el control de calidad de sus productos agricolas antes de la venta?": "How do you perform quality control of your agricultural products before sale?",
-    "como realiza actualmente los pagos de remuneraciones a sus trabajadores?": "How do you currently process payroll payments for your workers?",
-    "ha postulado o adjudicado fondos publicos o privados para su actividad agricola en los ultimos tres anos?": "Have you applied for or been awarded public or private funding for your agricultural activity in the last three years?",
-    "como gestiona actualmente la relacion con sus proveedores de insumos agricolas?": "How do you currently manage relationships with your agricultural input suppliers?",
-    "como gestiona actualmente la relacion con sus proveedores de insumos?": "How do you currently manage relationships with your input suppliers?",
-    "como realiza y controla los pagos a sus proveedores?": "How do you make and control payments to your suppliers?",
-    "utiliza canales digitales para vender sus productos agricolas?": "Do you use digital channels to sell your agricultural products?",
-    "utiliza canales digitales para vender sus productos?": "Do you use digital channels to sell your products?",
-    "que medios de pago ofrece actualmente a sus clientes?": "What payment methods do you currently offer your customers?",
-    "cual es el nivel de formacion del principal tomador de decisiones en su unidad productiva?": "What is the education level of the main decision-maker in your production unit?",
-    "como estan distribuidas las responsabilidades en su empresa agricola?": "How are responsibilities distributed in your agricultural company?",
-    "como estan definidos los roles dentro de su organizacion?": "How are roles defined within your organization?",
-    "que uso hace de tecnologias en la nube (cloud) en su empresa agricola?": "How do you use cloud technologies in your agricultural company?",
-    "utiliza algun sistema o software instalado localmente en sus equipos para apoyar la gestion agricola?": "Do you use any locally installed systems or software on your equipment to support agricultural management?",
-    "que tipo de software utiliza en su empresa y como lo gestiona?": "What type of software do you use in your company and how do you manage it?",
-    "participa usted o su equipo en instancias de capacitacion o formacion tecnica relacionadas con la actividad agricola?": "Do you or your team participate in technical training related to agricultural activity?",
-    "cuenta con apoyo tecnico para mejorar la produccion o gestion de su empresa agricola?": "Do you have technical support to improve production or management in your agricultural company?",
-}
-_QUESTION_CORE_EN = {_norm_key(k): v for k, v in _QUESTION_CORE_EN_RAW.items()}
-
-
 _SOLUTION_NAME_EN_RAW = {
+    "ajuste de diametro y expansion sectorizada de tuberias de riego": "Irrigation Pipe Resizing and Expansion by Zone",
+    "agrometeorologia inia para evapotranspiracion y programacion de riego": "INIA Agrometeorology for Evapotranspiration and Irrigation Scheduling",
+    "sistema integrado de sensores y programacion de riego": "Integrated Sensor and Irrigation Scheduling System",
+    "ampliacion de red de distribucion de riego con tuberias de presion": "Expansion of the Irrigation Distribution Network with Pressure-Rated Piping",
+    "agrometeorologia inia para seguimiento de rendimiento y clima": "INIA Agrometeorology for Yield and Weather Monitoring",
+    "asesoria tecnica inia y soporte local especializado": "INIA Technical Advice and Specialized Local Support",
+    "soporte tecnico especializado para riego y tecnologias digitales": "Specialized Technical Support for Irrigation and Digital Technologies",
+    "sistema integrado de sensores y analitica para planificacion productiva": "Integrated Sensors and Analytics for Production Planning",
+    "sistema integrado de sensores y analitica para seguimiento de rendimiento": "Integrated Sensors and Analytics for Yield Monitoring",
     "agromet para monitoreo agroclimatico y alertas": "AGROMET for Agroclimatic Monitoring and Alerts",
     "alertas agromet de heladas y golpes de calor": "AGROMET Frost and Heatwave Alerts",
     "all in one hp i5 en pc factory": "All in One HP i5 at PC Factory",
@@ -94,6 +65,16 @@ _SOLUTION_NAME_EN = {_norm_key(k): v for k, v in _SOLUTION_NAME_EN_RAW.items()}
 
 
 _SOLUTION_DESC_EN_RAW = {
+    "redimensionar o ampliar la red de tuberias segun calculo hidraulico, aumentando el diametro cuando se requiera transportar mayor caudal y extendiendo la red solo cuando el objetivo sea regar una mayor superficie o incorporar nuevos sectores. la medida debe ejecutarse conforme a estandares de diseno de riego, presion disponible, caudal requerido y disponibilidad hidrica del predio.": "Resize or expand the piping network based on hydraulic calculations. Increase pipe diameter where greater flow is needed, and extend the network only to irrigate a larger area or add new zones. Carry out the work in accordance with irrigation design standards, available pressure, required flow, and the farm's water availability.",
+    "usar la plataforma agrometeorologia inia, especialmente la informacion de evapotranspiracion, para estimar demanda hidrica, ajustar la frecuencia de riego y apoyar decisiones operativas ante variabilidad climatica. esta recomendacion permite programar riegos con datos agroclimaticos publicos y pertinentes para la gestion hidrica del predio.": "Use the INIA Agrometeorology platform, especially evapotranspiration information, to estimate water demand, adjust irrigation frequency and support operational decisions in the face of climate variability. This recommendation supports irrigation scheduling using public agroclimatic data relevant to on-farm water management.",
+    "implementar sensores de humedad de suelo, controladores de riego y datos agrometeorologicos publicos para avanzar desde una programacion fija hacia una programacion basada en informacion del predio. la solucion debe priorizar componentes disponibles comercialmente y soporte local para asegurar continuidad operativa.": "Use soil moisture sensors, irrigation controllers, and public agrometeorological data to move from fixed schedules to schedules based on farm conditions. The solution should prioritize commercially available components and local support to ensure operational continuity.",
+    "implementar un sistema integrado de sensores de humedad de suelo, caudalimetros o lisimetros cuando corresponda, controladores de riego y datos agrometeorologicos publicos para programar el riego con informacion propia del predio. la recomendacion prioriza componentes disponibles comercialmente y asistencia tecnica local para asegurar implementacion y continuidad operativa.": "Install an integrated system with soil moisture sensors, flow meters or lysimeters where appropriate, irrigation controllers, and public agrometeorological data to schedule irrigation using farm-specific information. Prioritize commercially available components and local technical assistance to implement the system and keep it operating.",
+    "ampliar o reforzar la red de distribucion de riego mediante tuberias de presion y accesorios compatibles con el caudal, la presion disponible y la superficie a regar. la seleccion de materiales debe validarse con diseno hidraulico basico y disponibilidad local de repuestos.": "Expand or reinforce the irrigation distribution network using pressure-rated pipes and fittings suited to the required flow, available pressure, and area to be irrigated. Verify material selection against a basic hydraulic design and the local availability of replacement parts.",
+    "registrar el rendimiento por lote, cuartel o unidad productiva y contrastarlo con datos agrometeorologicos publicos de inia, incluyendo evapotranspiracion, temperatura y eventos climaticos relevantes. esta accion permite relacionar resultados productivos con condiciones ambientales y apoyar decisiones de manejo.": "Record yield by lot, field block, or production unit and compare it with public INIA agrometeorological data, including evapotranspiration, temperature, and relevant weather events. This action makes it possible to link productive results with environmental conditions and to support management decisions.",
+    "formalizar un canal basico de soporte tecnico mediante inia transferencia tecnologica, asesores locales y proveedores especializados en gestion, riego, tecnologias digitales u operacion agricola. la medida permite pasar desde ausencia de soporte a una red inicial de apoyo tecnico no especializado pero disponible y trazable.": "Formalize a basic technical support channel through INIA Technology Transfer, local advisers and suppliers specialized in management, irrigation, digital technologies or agricultural operation. The measure allows you to move from the absence of support to an initial network of technical support not specialized but available and traceable.",
+    "formalizar soporte tecnico especializado para riego, tecnologias digitales y gestion operativa mediante asesores locales, proveedores con cobertura regional e instituciones de transferencia tecnologica. esta accion permite pasar desde soporte no especializado a apoyo tecnico con mayor capacidad de diagnostico y seguimiento.": "Formalize specialized technical support for irrigation, digital technologies and operational management through local advisers, providers with regional coverage and technology transfer institutions. This action allows you to move from non-specialized support to technical support with greater diagnostic and monitoring capacity.",
+    "integrar sensores de humedad, registros de riego, datos agrometeorologicos publicos y registros productivos para apoyar la planificacion diaria y avanzar hacia decisiones productivas basadas en datos. la solucion debe implementarse con herramientas disponibles comercialmente, integracion gradual y seguimiento de indicadores operativos.": "Integrate moisture sensors, irrigation records, public agrometeorological data and production records to support daily planning and move towards data-based productive decisions. The solution should be implemented with commercially available tools, gradual integration and monitoring of operational indicators.",
+    "integrar sensores de campo, datos agrometeorologicos publicos y registros productivos digitales para relacionar rendimiento con condiciones ambientales, riego y manejo operativo. la solucion debe implementarse con tecnologias disponibles comercialmente y seguimiento periodico de indicadores de produccion.": "Integrate field sensors, public agrometeorological data, and digital production records to relate yield to environmental conditions, irrigation, and farm management. The solution should be implemented with commercially available technologies and regular monitoring of production indicators.",
     "usar la plataforma publica agromet y su sistema de monitoreo y alertas para programar labores y riegos con informacion agroclimatica de libre acceso.": "Use the public AGROMET platform and its monitoring and alert system to schedule field operations and irrigation with open agroclimatic information.",
     "activar el sistema de alertas de agromet para ajustar ventanas de riego, labores criticas y decisiones productivas ante eventos meteorologicos extremos.": "Activate AGROMET alerts to adjust irrigation windows, critical operations, and production decisions during extreme weather events.",
     "escalar el puesto local a un equipo mas robusto para software administrativo, reporteria y operacion multiventana.": "Upgrade the local workstation to more robust hardware for administrative software, reporting, and multi-window operations.",
@@ -137,19 +118,6 @@ _SOLUTION_DESC_EN_RAW = {
     "sectorizar la distribucion de agua con una valvula electrica basica que facilita el paso desde sistemas mixtos a redes mas ordenadas.": "Sectorize water distribution with a basic electric valve to support transition from mixed systems to more organized networks.",
 }
 _SOLUTION_DESC_EN = {_norm_key(k): v for k, v in _SOLUTION_DESC_EN_RAW.items()}
-
-
-_PRICE_DISPLAY_EN_RAW = {
-    "31072 clp/month desde el mes 4; promocion de 14990 clp/month durante los primeros 3 meses": "CLP 31,072/month from month 4; promotional CLP 14,990/month for the first 3 months",
-    "piloto o convenio; sin precio publico vigente clp": "Pilot or agreement; no current public price (CLP)",
-    "postulacion o proyecto cofinanciado; sin precio publico unico clp": "Application or co-funded project; no single public price (CLP)",
-    "sin precio publico unico; costo variable segun diametro, longitud, mano de obra y diseno hidraulico; requiere cotizacion clp": "No single public price; cost varies by diameter, length, labor, and hydraulic design; quotation required (CLP)",
-    "sin precio publico unico; costo variable segun diametro, longitud, accesorios, mano de obra y superficie; requiere cotizacion clp": "No single public price; cost varies by diameter, length, accessories, labor, and coverage area; quotation required (CLP)",
-    "sin precio publico vigente para el modelo especifico; requiere cotizacion de un equipo equivalente clp": "No current public price for the specific model; quotation for an equivalent device is required (CLP)",
-    "11000000 clp total programa": "CLP 11,000,000 total program",
-    "16720000 clp total programa": "CLP 16,720,000 total program",
-}
-_PRICE_DISPLAY_EN = {_norm_key(k): v for k, v in _PRICE_DISPLAY_EN_RAW.items()}
 
 
 _DOMAIN_EN_RAW = {
@@ -207,53 +175,18 @@ _KPI_EN_RAW = {
 _KPI_EN = {_norm_key(k): v for k, v in _KPI_EN_RAW.items()}
 
 
-def _load_json_map(rel_path: str) -> dict[str, str]:
-    path = Path(__file__).resolve().parent / rel_path
-    if not path.exists():
-        return {}
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-    if not isinstance(data, dict):
-        return {}
-    return {str(k): str(v) for k, v in data.items()}
+_NUBOX_PUBLIC_NAMES = {
+    "CH_NUBOX_175": ("Nubox Módulo básico", "Nubox Basic Module"),
+    "CH_NUBOX_245": ("Nubox Plan avanzado", "Nubox Advanced Plan"),
+    "CH_NUBOX_575": ("Nubox Factura y Administración, plan básico de 3.000 DTE", "Nubox Invoicing and Administration, Basic Plan (3,000 electronic tax documents)"),
+    "CH_NUBOX_800": ("Nubox Factura y Administración, plan Pro de 7.500 DTE", "Nubox Invoicing and Administration, Pro Plan (7,500 electronic tax documents)"),
+}
 
 
-_OPTION_EN_FILE_MAP = _load_json_map("assets/localization/options_en.json")
-_OPTION_EN = {_norm_key(k): v for k, v in _OPTION_EN_FILE_MAP.items()}
-
-
-def localize_question_prompt(prompt: str, qnum: int | None = None, language: str = "en") -> str:
-    raw = str(prompt or "").strip()
-    if not raw:
-        return ""
-    if str(language).lower() != "en":
-        return raw
-    number = qnum
-    core = raw
-    match = re.match(r"^\s*(?:Pregunta|Question)\s*(\d+)\s*:\s*(.+)$", raw, flags=re.IGNORECASE)
-    if match:
-        number = int(match.group(1))
-        core = match.group(2).strip()
-    translated = _QUESTION_CORE_EN.get(_norm_key(core))
-    if translated is None:
-        translated = core
-    if number is not None:
-        return f"Question {int(number)}: {translated}"
-    return translated
-
-
-def localize_option_text(option: str, language: str = "en") -> str:
-    raw = str(option or "").strip()
-    if not raw:
-        return ""
-    if str(language).lower() != "en":
-        return raw
-    return _OPTION_EN.get(_norm_key(raw), raw)
-
-
-def localize_solution_name(name: str, language: str = "en") -> str:
+def localize_solution_name(name: str, language: str = "en", *, solution_code: str = "") -> str:
+    if solution_code in _NUBOX_PUBLIC_NAMES:
+        es_name, en_name = _NUBOX_PUBLIC_NAMES[solution_code]
+        return en_name if str(language).lower() == "en" else es_name
     raw = str(name or "").strip()
     if not raw:
         return ""
@@ -262,22 +195,24 @@ def localize_solution_name(name: str, language: str = "en") -> str:
     return _SOLUTION_NAME_EN.get(_norm_key(raw), raw)
 
 
+_SOLUTION_DESC_ES = {
+    "fortalecer el nivel educacional del tomador de decisiones con formacion avanzada en gestion del sector agroalimentario.": (
+        "Fortalecer el nivel educacional de quien toma las decisiones con formación avanzada "
+        "en gestión del sector agroalimentario."
+    ),
+    "escalar a un nivel de especializacion avanzada para liderar innovacion, analisis y estrategia con alta base tecnica.": (
+        "Avanzar hacia una especialización que permita liderar la innovación, el análisis "
+        "y la estrategia con una sólida base técnica."
+    ),
+}
+
+
 def localize_solution_description(description: str, language: str = "en") -> str:
     raw = str(description or "").strip()
     if not raw:
         return ""
-    if str(language).lower() != "en":
-        return raw
-    return _SOLUTION_DESC_EN.get(_norm_key(raw), raw)
-
-
-def localize_price_display(price: str, language: str = "en") -> str:
-    raw = str(price or "").strip()
-    if not raw:
-        return ""
-    if str(language).lower() != "en":
-        return raw
-    return _PRICE_DISPLAY_EN.get(_norm_key(raw), raw)
+    translations = _SOLUTION_DESC_EN if str(language).lower() == "en" else _SOLUTION_DESC_ES
+    return translations.get(_norm_key(raw), raw)
 
 
 def localize_domain(domain: str, language: str = "en") -> str:

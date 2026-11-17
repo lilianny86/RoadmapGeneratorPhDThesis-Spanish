@@ -34,20 +34,6 @@ def format_percentage(value: object, decimal_places: int = 2) -> str:
     return f"{format_decimal(value, decimal_places)}%"
 
 
-def format_clp(value: object, unavailable: str) -> str:
-    """Format CLP with periods for thousands and a decimal comma."""
-    if value is None:
-        return unavailable
-    try:
-        amount = float(value)
-    except (TypeError, ValueError):
-        return unavailable
-
-    formatted = f"{amount:,.2f}"
-    localized = formatted.replace(",", "_").replace(".", ",").replace("_", ".")
-    return f"CLP $ {localized}"
-
-
 def format_timestamp(value: object) -> str:
     """Render ISO-like timestamps in a form intended for people."""
     return str(value or "").strip().replace("T", " ", 1)

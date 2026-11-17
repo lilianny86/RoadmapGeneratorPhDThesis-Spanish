@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import re
 import unicodedata
@@ -11,17 +10,16 @@ from datetime import datetime
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
-from catalog_quality import build_catalog_v3, catalog_report_to_text
-from costing import estimate_cost_clp
+from catalog_quality import SCHEMA_VERSION, build_catalog_v4
+from economic_policy import BUDGET_OPTIONS, CATALOG_RELATIVE_PATH
+
 from en_localization import (
     localize_domain,
     localize_kda,
     localize_kpi,
-    localize_price_display,
     localize_solution_description,
     localize_solution_name,
 )
-from pdf_export import export_friendly_pdf, export_technical_pdf
 from questionnaire_instrument import INSTRUMENT_VERSION, get_questionnaire
 from recommendation_engine import build_engine_config, match_solutions, optimize_recommendations
 from security_config import load_security_config, scan_hardcoded_secrets, validate_smtp_config
@@ -37,10 +35,6 @@ def norm(text: str) -> str:
 _ENGINE_TEXT_EN = {
     "Seleccionada por alto desempeÃ±o multicriterio.": "Selected due to strong multi-criteria performance.",
     "Seleccionada por alto desempeño multicriterio.": "Selected due to strong multi-criteria performance.",
-    "Costo estimado por defecto (sin precio pÃºblico confirmado).": "Default estimated cost applied (no confirmed public price).",
-    "Costo estimado por defecto (sin precio público confirmado).": "Default estimated cost applied (no confirmed public price).",
-    "Costo referido a esquema de suscripciÃ³n.": "Cost based on a subscription scheme.",
-    "Costo referido a esquema de suscripción.": "Cost based on a subscription scheme.",
     "PenalizaciÃ³n por proveedor repetido para mejorar diversidad.": "Penalty applied for repeated provider to improve diversity.",
     "Penalización por proveedor repetido para mejorar diversidad.": "Penalty applied for repeated provider to improve diversity.",
     "PenalizaciÃ³n por dominio repetido para ampliar cobertura.": "Penalty applied for repeated domain to broaden coverage.",
@@ -51,10 +45,8 @@ _ENGINE_TEXT_EN = {
 _ENGINE_COMPONENT_KEY_EN = {
     "prioridad_kpi": "kpi_priority",
     "impacto": "impact",
-    "costo": "cost",
     "riesgo": "risk",
     "esfuerzo": "effort",
-    "factor_horizonte": "horizon_factor",
 }
 
 
@@ -344,13 +336,13 @@ def load_profile_data(root: Path, profile: str, language: str = "es") -> dict[st
 
 
 def load_solutions(root: Path) -> tuple[list[dict[str, object]], dict[str, object]]:
-    xlsx = root / "assets" / "roadmap" / "Catalogo_Soluciones_MM_Agro_Pymes_v3-Chile - revisado expertos INIA.xlsx"
+    xlsx = root / CATALOG_RELATIVE_PATH
     sheets = read_xlsx(xlsx)
-    sheet_name = "Catalogo_Soluciones" if "Catalogo_Soluciones" in sheets else next(iter(sheets.keys()))
+    sheet_name = "Catalogo_Soluciones"
     rows = sheets[sheet_name]
     if not rows:
         empty_report = {
-            "schema_version": "catalog_v3.0",
+            "schema_version": SCHEMA_VERSION,
             "generated_at": datetime.now().isoformat(timespec="seconds"),
             "summary": {"rows_in_catalog": 0, "rows_processed": 0, "error_count": 0, "warning_count": 0, "duplicate_combinations": 0},
             "errors": [],
@@ -358,12 +350,18 @@ def load_solutions(root: Path) -> tuple[list[dict[str, object]], dict[str, objec
         }
         return [], empty_report
     headers = rows[0]
+    proxy_fields = {"esfuerzo_economico_total", "modalidad_financiamiento",
+                    "componentes_economicos_considerados", "fundamento_clasificacion_economica"}
+    if missing := proxy_fields.difference(headers):
+        raise ValueError(f"The v4 catalog is missing columns: {', '.join(sorted(missing))}")
     idx = {h: i for i, h in enumerate(headers) if h}
 
     def val(row: list[str], *keys: str) -> str:
         for k in keys:
             if k in idx and idx[k] < len(row):
-                return row[idx[k]].strip()
+                value = row[idx[k]].strip()
+                if value:
+                    return value
         return ""
 
     raw_rows: list[dict[str, object]] = []
@@ -392,18 +390,19 @@ def load_solutions(root: Path) -> tuple[list[dict[str, object]], dict[str, objec
                 "plazo_raw": val(r, "plazo_implementacion", "plazo"),
                 "provider": val(r, "proveedor_programa_chileno_preferente", "proveedor", "provider"),
                 "provider_url": val(r, "url_proveedor_programa_chileno", "provider_url"),
-                "source": val(r, "fuente_contexto_territorial", "source", "fuente", "source_context"),
+                "source": val(r, "fuente", "fuente_contexto_territorial"),
                 # Prioriza la URL de la solución específica (fuente) y deja contexto como respaldo.
                 "source_url": val(r, "url_fuente", "url_fuente_contexto_territorial", "source_url"),
-                "price_reference": val(r, "precio_referencial", "price_reference", "price"),
-                "price_clp_raw": val(r, "precio_referencial_clp", "precio_referencial", "price"),
-                "currency": val(r, "moneda", "currency"),
-                "fx_date": val(r, "fecha_tipo_cambio_clp", "fx_date"),
+                "economic_effort": val(r, "esfuerzo_economico_total"),
+                "financing_mode": val(r, "modalidad_financiamiento"),
+                "economic_components": val(r, "componentes_economicos_considerados"),
+                "economic_rationale": val(r, "fundamento_clasificacion_economica"),
+                "expert_comments": val(r, "Comentario_expertos"),
                 "source_date": val(r, "fecha_vigencia", "vigencia", "updated_at"),
             }
         )
 
-    catalog_rows, catalog_report = build_catalog_v3(raw_rows)
+    catalog_rows, catalog_report = build_catalog_v4(raw_rows)
     out: list[dict[str, object]] = []
     for row in catalog_rows:
         out.append(
@@ -423,12 +422,12 @@ def load_solutions(root: Path) -> tuple[list[dict[str, object]], dict[str, objec
                 "provider_url": " | ".join(row["provider_urls"]),
                 "source": row["source"],
                 "source_url": " | ".join(row["source_urls"]),
-                "price": row["price_display"],
-                "price_type": row["price_type"],
-                "price_min_clp": row["price_min_clp"],
-                "price_max_clp": row["price_max_clp"],
-                "months_min": row["months_min"],
-                "months_max": row["months_max"],
+                "solution_code": row["code"],
+                "economic_effort": row["economic_effort"],
+                "financing_mode": row["financing_mode"],
+                "economic_components": row["economic_components"],
+                "economic_rationale": row["economic_rationale"],
+                "expert_comments": row["expert_comments"],
                 "impact_level": row["impact_level"],
                 "impact_score": row["impact_score"],
                 "effort_level": row["effort_level"],
@@ -449,30 +448,8 @@ def _horizon(plazo: str) -> str:
         return "Medium term"
     if "largo" in t or "long" in t:
         return "Long term"
-    months = _extract_timeline_months(plazo)
-    if months is not None:
-        if months <= 3:
-            return "Short term"
-        if months <= 6:
-            return "Medium term"
-        if months <= 12:
-            return "Long term"
     return "Unclassified"
 
-
-def _extract_timeline_months(value: object) -> float | None:
-    if value is None:
-        return None
-    text = str(value)
-    normalized = norm(text)
-    numbers = [float(token.replace(",", ".")) for token in re.findall(r"\d+(?:[.,]\d+)?", text)]
-    if not numbers:
-        return None
-    if "mes" in normalized:
-        return max(numbers)
-    if "anio" in normalized:
-        return max(numbers) * 12.0
-    return None
 
 
 def _horizon_order(plazo: str) -> int:
@@ -567,6 +544,12 @@ def build_traceability_entries(
                 "overall_gap": row.get("overall_gap", kpi_row.get("gap", 0) if isinstance(kpi_row, dict) else 0),
                 "horizon": row.get("plazo", ""),
                 "recommendation": row.get("solution_name", ""),
+                "solution_code": row.get("solution_code", ""),
+                "economic_effort": row.get("economic_effort", ""),
+                "financing_mode": row.get("financing_mode", ""),
+                "selection_status": row.get("selection_status", ""),
+                "economic_components": row.get("economic_components", ""),
+                "economic_rationale": row.get("economic_rationale", ""),
                 "provider": row.get("provider", ""),
                 "dependencies": dependencies,
                 "engine_score": expl.get("selection_score", 0) if isinstance(expl, dict) else 0,
@@ -577,10 +560,7 @@ def build_traceability_entries(
                     "max_recommendations": cfg.get("max_recommendations") if isinstance(cfg, dict) else None,
                     "max_per_provider": cfg.get("max_per_provider") if isinstance(cfg, dict) else None,
                     "max_per_kpi": cfg.get("max_per_kpi") if isinstance(cfg, dict) else None,
-                    "budget_total_clp": cfg.get("budget_total_clp") if isinstance(cfg, dict) else None,
-                    "budget_short_clp": cfg.get("budget_short_clp") if isinstance(cfg, dict) else None,
-                    "budget_medium_clp": cfg.get("budget_medium_clp") if isinstance(cfg, dict) else None,
-                    "budget_long_clp": cfg.get("budget_long_clp") if isinstance(cfg, dict) else None,
+                    "budget_capacity": cfg.get("budget_capacity") if isinstance(cfg, dict) else None,
                 },
             }
         )
@@ -599,6 +579,8 @@ def build_roadmap(
     language: str = "es",
 ) -> dict[str, object]:
     profile = load_profile_data(root, company_type, language=language)
+    if engine_cfg.budget_capacity not in BUDGET_OPTIONS[company_type]:
+        raise ValueError(f"Budget capacity does not match company profile: {company_type}")
     solutions, catalog_report = load_solutions(root)
     questions = profile["questions"]
 
@@ -622,7 +604,6 @@ def build_roadmap(
     # remains the gap-only collection consumed by the roadmap and PDF exports.
     kpi_assessment_results = []
     candidate_entries: list[dict[str, object]] = []
-    required_transition_keys: list[str] = []
     unmatched_required_transitions: list[dict[str, object]] = []
 
     for q in questions:
@@ -714,7 +695,6 @@ def build_roadmap(
             stage_target_label = labels[stage_target - 1]
             stage_transition = f"{stage_current_label}->{stage_target_label}"
             required_transition_key = f"{n}:{stage_transition}"
-            required_transition_keys.append(required_transition_key)
             matches = match_solutions(
                 solutions,
                 sol_hint=str(profile["sol_hint"]),
@@ -745,21 +725,21 @@ def build_roadmap(
                         "transition": stage_transition,
                         "required_transition_key": required_transition_key,
                         "plazo": _horizon(str(s.get("plazo", ""))),
-                        "solution_name": localize_solution_name(str(s.get("name", "")), language=language),
+                        "solution_name": localize_solution_name(
+                            str(s["name"]), language=language, solution_code=str(s.get("solution_code", ""))
+                        ),
                         "solution_description": localize_solution_description(cleaned_description, language=language),
                         "provider": s.get("provider", ""),
                         "provider_url": s.get("provider_url", ""),
                         "source": s.get("source", ""),
                         "source_url": s.get("source_url", ""),
-                        "price": localize_price_display(
-                            str(s.get("price", "No informado" if str(language).lower() != "en" else "Not reported") or ("No informado" if str(language).lower() != "en" else "Not reported")),
-                            language=language,
-                        ),
-                        "price_type": s.get("price_type", "unknown"),
-                        "price_min_clp": s.get("price_min_clp"),
-                        "price_max_clp": s.get("price_max_clp"),
-                        "months_min": s.get("months_min"),
-                        "months_max": s.get("months_max"),
+                        "solution_code": s.get("solution_code", ""),
+                        "catalog_solution_name": s["name"],
+                        "catalog_domain": s["domain"],
+                        "economic_effort": s.get("economic_effort", ""),
+                        "financing_mode": s.get("financing_mode", ""),
+                        "economic_components": s.get("economic_components", ""),
+                        "economic_rationale": s.get("economic_rationale", ""),
                         "impact_level": s.get("impact_level", "Medio" if str(language).lower() != "en" else "Medium"),
                         "impact_score": s.get("impact_score", 3.0),
                         "effort_level": s.get("effort_level", "Medio" if str(language).lower() != "en" else "Medium"),
@@ -782,26 +762,15 @@ def build_roadmap(
     kpi_results.sort(key=lambda x: (float(x["priority"]), float(x["gap"])), reverse=True)
 
     optimized_entries, engine_report = optimize_recommendations(candidate_entries, engine_cfg)
-    budget_uncovered_keys = set(engine_report.get("uncovered_required_transitions", []))
-    catalog_uncovered_keys = {
-        f"{row['question_number']}:{row['transition']}"
-        for row in unmatched_required_transitions
-    }
-    all_uncovered_keys = budget_uncovered_keys | catalog_uncovered_keys
-    transition_by_key = {key: key.split(":", 1)[1] for key in required_transition_keys}
-    engine_report["required_transition_count"] = len(required_transition_keys)
-    engine_report["covered_required_transition_count"] = len(required_transition_keys) - len(all_uncovered_keys)
-    engine_report["uncovered_required_transitions"] = [
-        transition_by_key[key]
-        for key in required_transition_keys
-        if key in all_uncovered_keys
-    ]
-    engine_report["budget_excluded_required_transitions"] = [
-        transition_by_key[key]
-        for key in required_transition_keys
-        if key in budget_uncovered_keys
-    ]
+    outcomes = engine_report["transition_outcomes"]
+    for row in unmatched_required_transitions:
+        key = f"{row['question_number']}:{row['transition']}"
+        outcomes[key] = {"status": "no_catalog_match", "candidate_statuses": []}
+    for key, outcome in outcomes.items():
+        question, transition = key.split(":", 1)
+        outcome.update(question_number=int(question), transition=transition)
     engine_report["missing_catalog_transitions"] = unmatched_required_transitions
+
     dedup: dict[tuple[str, str, str, str], dict[str, object]] = {}
     for e in optimized_entries:
         key = (norm(str(e["kpi"])), norm(str(e["transition"])), norm(str(e["solution_name"])), norm(str(e["plazo"])))
@@ -814,6 +783,7 @@ def build_roadmap(
         dedup.values(),
         key=lambda e: (
             _horizon_order(str(e["plazo"])),
+            e.get("selection_status") != "compatible",
             -float(e.get("engine_explanation", {}).get("selection_score", 0) or 0),
             -float(e.get("priority", 0) or 0),
             norm(str(e["solution_name"])),
@@ -827,6 +797,7 @@ def build_roadmap(
             localized_entries.append(item)
         roadmap_entries = localized_entries
         engine_report = _localize_engine_summary(engine_report, language)
+    _summarize_coverage(engine_report, roadmap_entries)
     traceability_entries = build_traceability_entries(kpi_results, roadmap_entries, engine_report)
 
     domain_results = []
@@ -866,7 +837,7 @@ def build_roadmap(
             "roadmap_entries": roadmap_entries,
             "traceability_entries": traceability_entries,
             "catalog_summary": {
-                "schema_version": catalog_report.get("schema_version", "catalog_v3.0"),
+                "schema_version": catalog_report.get("schema_version", SCHEMA_VERSION),
                 "rows_in_catalog": catalog_summary.get("rows_in_catalog", 0),
                 "rows_processed": catalog_summary.get("rows_processed", 0),
                 "error_count": catalog_summary.get("error_count", 0),
@@ -894,194 +865,35 @@ def load_answers(path: Path) -> dict[int, int] | list[int]:
     raise RuntimeError("Unsupported answers format")
 
 
-def save_txt(payload: dict[str, object], path: Path) -> None:
-    c = payload["company"]
-    r = payload["result"]
-    cat = r.get("catalog_summary", {}) if isinstance(r, dict) else {}
-    eng = r.get("engine_summary", {}) if isinstance(r, dict) else {}
-    lines = [
-        "ROADMAP SUMMARY",
-        "",
-        f"Company: {c.get('name','')}",
-        f"Tipo: {c.get('company_type','')}",
-        f"RUT: {c.get('rut','')}",
-        f"Email: {c.get('email','')}",
-        f"Generado: {r.get('timestamp','')}",
-        "",
-        f"Current score: {r.get('current_score',0)}",
-        f"Selected-target reference score: {r.get('selected_target_score',0)}",
-        f"Adjusted target score: {r.get('target_score',0)}",
-        f"Target progress (%): {r.get('target_progress_pct',0)}",
-        f"Target level: {r.get('target_level_index',0)}",
-        "",
-        f"Catalog ({cat.get('schema_version','catalog_v3.0')}): "
-        f"rows={cat.get('rows_processed',0)}, "
-        f"errors={cat.get('error_count',0)}, "
-        f"warnings={cat.get('warning_count',0)}",
-        "",
-        f"Motor recomendaciones ({eng.get('engine_version','eng_v1.0')}): "
-        f"candidatas={eng.get('candidate_count',0)}, "
-        f"seleccionadas={eng.get('selected_count',0)}, "
-        f"presupuesto_usado_clp={eng.get('used_budget_total_clp',0)}",
-        "",
-        f"Brechas KPI: {len(r.get('kpi_results',[]))}",
+def _summarize_coverage(report: dict[str, object], entries: list[dict[str, object]]) -> None:
+    outcomes = report["transition_outcomes"]
+    chosen = defaultdict(set)
+    for entry in entries:
+        chosen[entry.get("required_transition_key")].add(entry.get("selection_status"))
+    status_counts = defaultdict(int)
+    pending = {"conditional_effort", "cofinancing_pending", "quotation_pending"}
+    for key, outcome in outcomes.items():
+        statuses = chosen[key]
+        if "compatible" in statuses:
+            status = "compatible"
+        elif available := statuses & pending:
+            status = sorted(available)[0]
+        elif outcome["status"] in pending | {"compatible"}:
+            status = "selection_constraints"
+        else:
+            status = outcome["status"]
+        outcome["status"] = status
+        status_counts[status] += 1
+    report["required_transition_count"] = len(outcomes)
+    report["matched_transition_count"] = len(outcomes) - status_counts["no_catalog_match"]
+    report["covered_required_transition_count"] = status_counts["compatible"]
+    report["conditional_required_transition_count"] = sum(status_counts[s] for s in pending)
+    report["uncovered_required_transitions"] = [
+        row["transition"] for row in outcomes.values() if row["status"] != "compatible"
     ]
-    for row in r.get("kpi_results", [])[:12]:
-        lines.append(
-            f"- [{row['priority']}] {row['kpi']} | {row['current_label']} -> {row['target_label']} | brecha={row['gap']}"
-        )
-    lines.append("")
-    lines.append("Roadmap actions:")
-    for row in r.get("roadmap_entries", []):
-        expl = row.get("engine_explanation", {})
-        drivers = ", ".join(expl.get("main_drivers", [])[:2]) if isinstance(expl, dict) else ""
-        lines.append(
-            f"- {row['plazo']} | {row['kpi']} | {row['solution_name']} | {row['price']} | "
-            f"score={expl.get('selection_score',0)} | drivers={drivers}"
-        )
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    report["transition_status_counts"] = dict(status_counts)
+    report["selected_count"] = len(entries)
 
-
-def _slug(value: str) -> str:
-    clean = re.sub(r"[^a-zA-Z0-9]+", "-", norm(value))
-    return clean.strip("-") or "company"
-
-
-def save_preview(payload: dict[str, object], path: Path) -> None:
-    result = payload.get("result", {})
-    preview = {
-        "generated_at": result.get("timestamp", ""),
-        "company": payload.get("company", {}),
-        "engine_summary": result.get("engine_summary", {}),
-        "catalog_summary": result.get("catalog_summary", {}),
-        "roadmap_entries": result.get("roadmap_entries", []),
-    }
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(preview, ensure_ascii=False, indent=2), encoding="utf-8")
-
-
-def save_traceability_json(payload: dict[str, object], path: Path) -> None:
-    result = payload.get("result", {})
-    data = {
-        "generated_at": result.get("timestamp", ""),
-        "company": payload.get("company", {}),
-        "traceability_entries": result.get("traceability_entries", []),
-    }
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-
-
-def save_traceability_csv(payload: dict[str, object], path: Path) -> None:
-    result = payload.get("result", {})
-    rows = result.get("traceability_entries", [])
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fields = [
-        "trace_id",
-        "question_number",
-        "domain",
-        "kda",
-        "kpi",
-        "selected_option_text",
-        "current_label",
-        "target_label",
-        "gap",
-        "priority",
-        "transition",
-        "overall_current_label",
-        "overall_target_label",
-        "overall_gap",
-        "horizon",
-        "recommendation",
-        "provider",
-        "dependencies",
-        "engine_score",
-        "engine_main_drivers",
-        "engine_assumptions",
-        "rule_weights",
-        "rule_constraints",
-    ]
-    with path.open("w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fields)
-        writer.writeheader()
-        for row in rows if isinstance(rows, list) else []:
-            if not isinstance(row, dict):
-                continue
-            out_row = dict(row)
-            for key in ("dependencies", "engine_main_drivers", "engine_assumptions"):
-                val = out_row.get(key, [])
-                if isinstance(val, list):
-                    out_row[key] = " | ".join(str(x) for x in val)
-            for key in ("rule_weights", "rule_constraints"):
-                val = out_row.get(key, {})
-                if isinstance(val, dict):
-                    out_row[key] = json.dumps(val, ensure_ascii=False, sort_keys=True)
-            writer.writerow({k: out_row.get(k, "") for k in fields})
-
-
-def apply_roadmap_edits(payload: dict[str, object], edits_path: Path) -> dict[str, object]:
-    edits = json.loads(edits_path.read_text(encoding="utf-8"))
-    candidate_rows = edits.get("roadmap_entries") if isinstance(edits, dict) else edits
-    if not isinstance(candidate_rows, list):
-        raise RuntimeError("The edit file must contain a list in 'roadmap_entries' or a root list.")
-
-    valid_rows: list[dict[str, object]] = []
-    for row in candidate_rows:
-        if not isinstance(row, dict):
-            continue
-        if not str(row.get("solution_name", "")).strip():
-            continue
-        if not str(row.get("kpi", "")).strip():
-            continue
-        if not str(row.get("plazo", "")).strip():
-            continue
-        valid_rows.append(row)
-
-    if not valid_rows:
-        raise RuntimeError("No valid actions were found in the edit file.")
-
-    payload_out = dict(payload)
-    result = dict(payload_out.get("result", {}))
-    result["roadmap_entries"] = sorted(
-        valid_rows,
-        key=lambda e: (
-            _horizon_order(str(e.get("plazo", ""))),
-            -float(e.get("engine_explanation", {}).get("selection_score", e.get("priority", 0)) or 0),
-            norm(str(e.get("solution_name", ""))),
-        ),
-    )
-    result["traceability_entries"] = build_traceability_entries(
-        result.get("kpi_results", []) if isinstance(result.get("kpi_results"), list) else [],
-        result["roadmap_entries"] if isinstance(result["roadmap_entries"], list) else [],
-        result.get("engine_summary", {}) if isinstance(result.get("engine_summary"), dict) else {},
-    )
-    payload_out["result"] = result
-    return payload_out
-
-
-def autosave_session(payload: dict[str, object], session_dir: Path) -> Path:
-    company = payload.get("company", {})
-    name = str(company.get("name", "company"))
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    session_path = session_dir / f"{_slug(name)}_{stamp}.json"
-    session_dir.mkdir(parents=True, exist_ok=True)
-    session_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    return session_path
-
-
-def _rebuild_engine_budget_summary(entries: list[dict[str, object]]) -> tuple[float, dict[str, float]]:
-    total = 0.0
-    by_horizon: dict[str, float] = {}
-    for row in entries:
-        cost = estimate_cost_clp(row, use_existing_estimate=True)
-        if cost is None:
-            continue
-        if cost < 0:
-            continue
-        total += cost
-        horizon = str(row.get("plazo", "Unclassified"))
-        by_horizon[horizon] = by_horizon.get(horizon, 0.0) + cost
-    by_horizon = {k: round(v, 2) for k, v in by_horizon.items()}
-    return round(total, 2), by_horizon
 
 
 def cli(argv: list[str] | None = None) -> int:
@@ -1093,46 +905,16 @@ def cli(argv: list[str] | None = None) -> int:
     parser.add_argument("--company-rut", default="")
     parser.add_argument("--company-email", default="")
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parent)
-    parser.add_argument("--output-json", type=Path, default=None)
-    parser.add_argument("--output-txt", type=Path, default=None)
-    parser.add_argument("--output-pdf-tech", type=Path, default=None)
-    parser.add_argument("--output-pdf-friendly", type=Path, default=None)
-    parser.add_argument("--output-catalog-report-json", type=Path, default=None)
-    parser.add_argument("--output-catalog-report-txt", type=Path, default=None)
-    parser.add_argument("--output-trace-json", type=Path, default=None)
-    parser.add_argument("--output-trace-csv", type=Path, default=None)
+    parser.add_argument("--language", choices=["es", "en"], default="es")
+    parser.add_argument("--output-pdf", type=Path, help="Path for the selected-language roadmap PDF.")
+    parser.add_argument("--output-json", type=Path, help="Optional private export of the diagnostic and traceability data.")
     parser.add_argument("--engine-config-file", type=Path, default=None)
-    parser.add_argument("--budget-total-clp", type=float, default=None)
-    parser.add_argument("--budget-short-clp", type=float, default=None)
-    parser.add_argument("--budget-medium-clp", type=float, default=None)
-    parser.add_argument("--budget-long-clp", type=float, default=None)
+    parser.add_argument("--budget-capacity", choices=tuple(cap for caps in BUDGET_OPTIONS.values() for cap in caps), required=True)
+
     parser.add_argument("--max-recommendations", type=int, default=None)
     parser.add_argument("--max-per-provider", type=int, default=None)
     parser.add_argument("--max-per-kpi", type=int, default=None)
     parser.add_argument("--max-candidates-per-kpi", type=int, default=None)
-    parser.add_argument(
-        "--output-preview-json",
-        type=Path,
-        default=None,
-        help="Generates an editable preview of the roadmap (lightweight JSON).",
-    )
-    parser.add_argument(
-        "--apply-edits-file",
-        type=Path,
-        default=None,
-        help="Applies manual edits from a JSON file with roadmap_entries.",
-    )
-    parser.add_argument(
-        "--autosave-session",
-        action="store_true",
-        help="Saves an execution snapshot for traceability.",
-    )
-    parser.add_argument(
-        "--session-dir",
-        type=Path,
-        default=None,
-        help="Directory for session snapshots (default: outputs/sessions).",
-    )
     parser.add_argument(
         "--skip-pdf",
         action="store_true",
@@ -1151,18 +933,7 @@ def cli(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     root = args.root.resolve()
-    out_json = args.output_json or (root / "outputs" / "roadmap_result.json")
-    out_txt = args.output_txt or (root / "outputs" / "roadmap_result.txt")
-    out_pdf_tech = args.output_pdf_tech or (root / "outputs" / "roadmap_tecnico.pdf")
-    out_pdf_friendly = args.output_pdf_friendly or (root / "outputs" / "roadmap_friendly.pdf")
-    out_catalog_report_json = args.output_catalog_report_json or (root / "outputs" / "catalog_validation_report.json")
-    out_catalog_report_txt = args.output_catalog_report_txt or (root / "outputs" / "catalog_validation_report.txt")
-    out_trace_json = args.output_trace_json or (root / "outputs" / "roadmap_traceability.json")
-    out_trace_csv = args.output_trace_csv or (root / "outputs" / "roadmap_traceability.csv")
-    out_preview = args.output_preview_json.resolve() if args.output_preview_json is not None else None
     engine_config_file = args.engine_config_file.resolve() if args.engine_config_file is not None else None
-    edits_file = args.apply_edits_file.resolve() if args.apply_edits_file is not None else None
-    session_dir = args.session_dir.resolve() if args.session_dir is not None else (root / "outputs" / "sessions")
 
     sec_cfg, env_file = load_security_config(root)
     smtp_errors = validate_smtp_config(sec_cfg, strict=False)
@@ -1187,10 +958,7 @@ def cli(argv: list[str] | None = None) -> int:
     engine_cfg = build_engine_config(
         engine_config_file,
         overrides={
-            "budget_total_clp": args.budget_total_clp,
-            "budget_short_clp": args.budget_short_clp,
-            "budget_medium_clp": args.budget_medium_clp,
-            "budget_long_clp": args.budget_long_clp,
+            "budget_capacity": args.budget_capacity,
             "max_recommendations": args.max_recommendations,
             "max_per_provider": args.max_per_provider,
             "max_per_kpi": args.max_per_kpi,
@@ -1208,81 +976,38 @@ def cli(argv: list[str] | None = None) -> int:
         args.company_rut,
         args.company_email,
         engine_cfg,
+        language=args.language,
     )
-    catalog_report = payload.get("catalog_validation_report", {})
     catalog_summary = payload.get("result", {}).get("catalog_summary", {})
 
     if args.strict_catalog and int(catalog_summary.get("error_count", 0)) > 0:
         print(f"[DATA] Invalid catalog: {catalog_summary.get('error_count', 0)} errors.")
         return 3
 
-    if edits_file is not None:
-        payload = apply_roadmap_edits(payload, edits_file)
-        result = payload.get("result", {})
-        if isinstance(result, dict):
-            entries = result.get("roadmap_entries", [])
-            eng = result.get("engine_summary", {})
-            if isinstance(eng, dict):
-                eng["selected_count"] = len(entries) if isinstance(entries, list) else 0
-                if isinstance(entries, list):
-                    total_budget, budget_by_horizon = _rebuild_engine_budget_summary(entries)
-                    eng["used_budget_total_clp"] = total_budget
-                    eng["used_budget_by_horizon"] = budget_by_horizon
-                eng["manual_edits_applied"] = True
+    if args.output_json:
+        payload_export = {key: value for key, value in payload.items() if key != "catalog_validation_report"}
+        args.output_json.parent.mkdir(parents=True, exist_ok=True)
+        args.output_json.write_text(json.dumps(payload_export, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"JSON generado en: {args.output_json}")
 
-    out_json.parent.mkdir(parents=True, exist_ok=True)
-    out_txt.parent.mkdir(parents=True, exist_ok=True)
-    out_catalog_report_json.parent.mkdir(parents=True, exist_ok=True)
-    out_catalog_report_txt.parent.mkdir(parents=True, exist_ok=True)
-    out_trace_json.parent.mkdir(parents=True, exist_ok=True)
-    out_trace_csv.parent.mkdir(parents=True, exist_ok=True)
-    if out_preview is not None:
-        out_preview.parent.mkdir(parents=True, exist_ok=True)
     if not args.skip_pdf:
-        out_pdf_tech.parent.mkdir(parents=True, exist_ok=True)
-        out_pdf_friendly.parent.mkdir(parents=True, exist_ok=True)
+        if args.language == "en":
+            from pdf_export_en import export_roadmap_pdf
+        else:
+            from pdf_export import export_roadmap_pdf
 
-    out_catalog_report_json.write_text(json.dumps(catalog_report, ensure_ascii=False, indent=2), encoding="utf-8")
-    out_catalog_report_txt.write_text(catalog_report_to_text(catalog_report), encoding="utf-8")
-
-    payload_export = dict(payload)
-    if "catalog_validation_report" in payload_export:
-        payload_export.pop("catalog_validation_report")
-    out_json.write_text(json.dumps(payload_export, ensure_ascii=False, indent=2), encoding="utf-8")
-    save_txt(payload, out_txt)
-    save_traceability_json(payload, out_trace_json)
-    save_traceability_csv(payload, out_trace_csv)
-    if out_preview is not None:
-        save_preview(payload, out_preview)
-    if args.autosave_session:
-        autosaved = autosave_session(payload, session_dir)
-        print(f"[UX] Session saved to: {autosaved}")
-    if not args.skip_pdf:
-        export_technical_pdf(payload, out_pdf_tech)
-        export_friendly_pdf(payload, out_pdf_friendly)
-
-    print(f"JSON generado en: {out_json}")
-    print(f"TXT generado en: {out_txt}")
-    if out_preview is not None:
-        print(f"Preview JSON generated at: {out_preview}")
-    print(f"Traceability (JSON) generated at: {out_trace_json}")
-    print(f"Traceability (CSV) generated at: {out_trace_csv}")
-    if not args.skip_pdf:
-        print(f"Technical PDF generated at: {out_pdf_tech}")
-        print(f"Friendly PDF generated at: {out_pdf_friendly}")
-    else:
-        print("[UX] PDFs skipped by --skip-pdf")
-    print(f"Catalog report (JSON) generated at: {out_catalog_report_json}")
-    print(f"Catalog report (TXT) generated at: {out_catalog_report_txt}")
+        out_pdf = args.output_pdf or root / "outputs" / f"roadmap_{args.language}.pdf"
+        export_roadmap_pdf(payload, out_pdf)
+        print(f"PDF generado en: {out_pdf}")
     print(
-        f"[DATA] Catalog v3 -> rows={catalog_summary.get('rows_processed',0)} "
+        f"[DATA] Catalog {SCHEMA_VERSION} -> rows={catalog_summary.get('rows_processed',0)} "
         f"errors={catalog_summary.get('error_count',0)} warnings={catalog_summary.get('warning_count',0)}"
     )
     engine_summary = payload.get("result", {}).get("engine_summary", {})
     print(
         f"[ENG] Motor -> candidatas={engine_summary.get('candidate_count',0)} "
         f"seleccionadas={engine_summary.get('selected_count',0)} "
-        f"presupuesto_usado={engine_summary.get('used_budget_total_clp',0)}"
+        f"capacidad={engine_summary.get('config', {}).get('budget_capacity', '')}"
     )
     return 0
 
