@@ -114,7 +114,16 @@ class CaseOutputTests(unittest.TestCase):
             self.assertEqual({path.name for path in folder.iterdir()}, {"answers.json", "roadmap.pdf"})
             self.assertIn(b"TECHNOLOGY IMPROVEMENT ROADMAP", (folder / "roadmap.pdf").read_bytes())
             with redirect_stdout(io.StringIO()):
-                self.assertEqual(cli([*arguments, "--skip-pdf", "--output-json", str(folder / "analysis.json")]), 0)
+                self.assertEqual(cli([*arguments, "--language", "en", "--skip-pdf", "--output-json", str(folder / "analysis.json")]), 0)
             self.assertEqual({path.name for path in folder.iterdir()}, {"answers.json", "roadmap.pdf", "analysis.json"})
             payload = json.loads((folder / "analysis.json").read_text(encoding="utf-8"))
-            self.assertTrue(payload["result"]["traceability_entries"])
+            result = payload["result"]
+            self.assertTrue(result["traceability_entries"])
+            for row, trace in zip(result["roadmap_entries"], result["traceability_entries"], strict=True):
+                explanation = row["engine_explanation"]
+                self.assertEqual(trace["recommendation"], row["solution_name"])
+                self.assertEqual(trace["engine_score"], explanation["selection_score"])
+                for field in ("base_score", "selection_stage", "selection_order", "applied_penalties"):
+                    self.assertEqual(trace[f"engine_{field}"], explanation[field])
+                self.assertEqual(trace["engine_selection_summary"], explanation["summary"])
+                self.assertTrue(explanation["summary"].startswith("Selected "))

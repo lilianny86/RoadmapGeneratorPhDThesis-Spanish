@@ -35,6 +35,10 @@ def norm(text: str) -> str:
 _ENGINE_TEXT_EN = {
     "Seleccionada por alto desempeÃ±o multicriterio.": "Selected due to strong multi-criteria performance.",
     "Seleccionada por alto desempeño multicriterio.": "Selected due to strong multi-criteria performance.",
+    "Seleccionada como acción compatible para una transición requerida.": "Selected as a compatible action for a required transition.",
+    "Seleccionada como acción condicionada para una transición sin selección compatible.": "Selected as a conditional action for a transition without a compatible selection.",
+    "Seleccionada en la etapa de diversificación por dominio.": "Selected during domain diversification.",
+    "Seleccionada en la clasificación complementaria de acciones compatibles.": "Selected during supplementary ranking of compatible actions.",
     "PenalizaciÃ³n por proveedor repetido para mejorar diversidad.": "Penalty applied for repeated provider to improve diversity.",
     "Penalización por proveedor repetido para mejorar diversidad.": "Penalty applied for repeated provider to improve diversity.",
     "PenalizaciÃ³n por dominio repetido para ampliar cobertura.": "Penalty applied for repeated domain to broaden coverage.",
@@ -519,9 +523,11 @@ def build_traceability_entries(
         if kpi_row is None:
             kpi_row = by_kpi_transition.get((norm(kpi), norm(transition)))
 
-        expl = row.get("engine_explanation", {})
-        drivers = expl.get("main_drivers", []) if isinstance(expl, dict) else []
-        assumptions = expl.get("assumptions", []) if isinstance(expl, dict) else []
+        expl = row.get("engine_explanation")
+        if not isinstance(expl, dict):
+            expl = {}
+        drivers = expl.get("main_drivers", [])
+        assumptions = expl.get("assumptions", [])
         dependencies = row.get("dependencies", [])
         if not isinstance(dependencies, list):
             dependencies = [str(dependencies)] if dependencies else []
@@ -552,7 +558,12 @@ def build_traceability_entries(
                 "economic_rationale": row.get("economic_rationale", ""),
                 "provider": row.get("provider", ""),
                 "dependencies": dependencies,
-                "engine_score": expl.get("selection_score", 0) if isinstance(expl, dict) else 0,
+                "engine_score": expl.get("selection_score", 0),
+                "engine_base_score": expl.get("base_score"),
+                "engine_selection_stage": expl.get("selection_stage"),
+                "engine_selection_order": expl.get("selection_order"),
+                "engine_applied_penalties": expl.get("applied_penalties", {}),
+                "engine_selection_summary": expl.get("summary", ""),
                 "engine_main_drivers": drivers if isinstance(drivers, list) else [str(drivers)],
                 "engine_assumptions": assumptions if isinstance(assumptions, list) else [str(assumptions)],
                 "rule_weights": weights if isinstance(weights, dict) else {},

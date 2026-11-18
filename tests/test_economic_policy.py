@@ -101,6 +101,50 @@ class EconomicPolicyTests(unittest.TestCase):
         self.assertEqual(selected[0]['solution_name'], 'A long-term action')
         self.assertNotIn('factor_horizonte', selected[0]['engine_explanation']['component_scores'])
 
+    def test_transition_passes_do_not_report_penalties_for_repeated_providers_or_domains(self):
+        selected, _ = optimize_recommendations([
+            dict(candidate('A', 'low', transition='1:test', stage='Long term'), provider='P', domain='D'),
+            dict(candidate('B', 'low', transition='2:test'), provider='P', domain='D'),
+            dict(candidate('C', 'medium', transition='3:test'), provider='P', domain='D'),
+        ], EngineConfig(budget_capacity='small_low'))
+
+        self.assertEqual([row['solution_name'] for row in selected], ['B', 'C', 'A'])
+        explanations = {row['solution_name']: row['engine_explanation'] for row in selected}
+        for order, (name, stage) in enumerate((
+            ('A', 'compatible_transition'), ('B', 'compatible_transition'), ('C', 'conditional_transition'),
+        ), 1):
+            with self.subTest(name=name):
+                explanation = explanations[name]
+                self.assertEqual(explanation['selection_stage'], stage)
+                self.assertEqual(explanation['selection_order'], order)
+                self.assertEqual(explanation['applied_penalties'], {'repeated_provider': 0, 'repeated_domain': 0})
+                self.assertEqual(explanation['selection_score'], round(explanation['base_score'], 4))
+                self.assertEqual(explanation['assumptions'], [])
+
+    def test_supplementary_penalties_use_counts_at_selection_not_final_counts(self):
+        cfg = EngineConfig(budget_capacity='small_low', max_per_kpi=4)
+        selected, _ = optimize_recommendations([
+            dict(candidate(name, 'low'), question_number=1, provider='P', domain='D') for name in ('A', 'B', 'C', 'D')
+        ], cfg)
+        explanations = {row['solution_name']: row['engine_explanation'] for row in selected}
+        self.assertEqual(set(explanations), {'A', 'B', 'C', 'D'})
+        for order, (name, stage, penalized_count) in enumerate((
+            ('A', 'compatible_transition', 0), ('B', 'domain_diversification', 0),
+            ('C', 'supplementary_ranking', 2), ('D', 'supplementary_ranking', 3),
+        ), 1):
+            with self.subTest(name=name):
+                explanation = explanations[name]
+                provider_penalty = penalized_count * cfg.penalty_repeat_provider
+                domain_penalty = penalized_count * cfg.penalty_repeat_domain
+                self.assertEqual(explanation['selection_stage'], stage)
+                self.assertEqual(explanation['selection_order'], order)
+                self.assertEqual(explanation['applied_penalties'], {
+                    'repeated_provider': provider_penalty, 'repeated_domain': domain_penalty,
+                })
+                self.assertEqual(explanation['selection_score'],
+                                 round(explanation['base_score'] - provider_penalty - domain_penalty, 4))
+                self.assertEqual(len(explanation['assumptions']), 2 if penalized_count else 0)
+
     def test_medium_high_has_no_additional_high_effort_cap(self):
         selected, _ = optimize_recommendations([
             candidate(str(i), 'high', transition=f'{i}:test') for i in range(1, 7)

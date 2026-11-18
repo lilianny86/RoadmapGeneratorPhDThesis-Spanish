@@ -62,6 +62,8 @@ The statistical summary and KPI-level detail distinguish transitions with compat
 - `--engine-config-file` accepts an optional JSON file for overriding engine parameters. The example uses the default configuration and does not require this file.
 - `--output-json` optionally exports the assessment and traceability records. Without this flag, no results JSON file is written. The export may contain the company name, Chilean taxpayer identification number (RUT), and email address if supplied on the command line. It should not be treated as pseudonymized.
 
+Each recommendation's traceability record includes its selection stage, chronological selection order, base score, score used for selection, and the numeric deductions actually applied for repeated providers and domains. The chronological order can differ from the order in the roadmap. Repetition penalties are applied only during supplementary ranking.
+
 The interactive application does not generate JSON files for individual assessments. The command-line interface generates one PDF in the selected language unless `--skip-pdf` is used. It does not generate consent receipts or statistical CSVs, and it does not send emails.
 
 ## Confidentiality and Pseudonymization
@@ -137,6 +139,8 @@ El resumen y el detalle por KPI distinguen las transiciones con acciones compati
 - `--answers-file` lee las respuestas en JSON. Acepta una lista en orden de pregunta o un objeto que asocie los números de pregunta con las posiciones seleccionadas. Ambos formatos pueden ir bajo la clave `answers`.
 - `--engine-config-file` admite un JSON opcional para reemplazar parámetros del motor. El ejemplo de revisión utiliza la configuración predeterminada y no necesita ese archivo.
 - `--output-json` es una exportación opcional del diagnóstico y la trazabilidad. Sin esa opción no se escribe un JSON de resultados. El archivo puede incluir nombre, RUT y correo si se proporcionan al ejecutar la consola; no debe tratarse como una salida seudonimizada.
+
+El registro de trazabilidad de cada recomendación incluye la etapa y el orden cronológico de selección, el puntaje base, el puntaje usado para seleccionar y las deducciones realmente aplicadas por repetición de proveedor o dominio. El orden cronológico puede diferir del orden del roadmap. Las penalizaciones por repetición solo se aplican en la clasificación complementaria.
 
 La aplicación no genera JSON por evaluación. La consola genera un único PDF en el idioma solicitado, salvo que se use `--skip-pdf`, y no genera comprobantes, CSV estadísticos ni correos.
 

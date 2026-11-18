@@ -67,6 +67,22 @@ class EngineConfig:
     budget_capacity: str = ""
 
 
+@dataclass(frozen=True)
+class _SelectionDecision:
+    stage: str
+    order: int
+    score: float
+    provider_penalty: float = 0.0
+    domain_penalty: float = 0.0
+
+
+_SELECTION_STAGE_SUMMARIES = {
+    "compatible_transition": "Seleccionada como acción compatible para una transición requerida.",
+    "conditional_transition": "Seleccionada como acción condicionada para una transición sin selección compatible.",
+    "domain_diversification": "Seleccionada en la etapa de diversificación por dominio.",
+    "supplementary_ranking": "Seleccionada en la clasificación complementaria de acciones compatibles.",
+}
+
 
 def _apply_dict_config(cfg: EngineConfig, raw: dict[str, Any]) -> EngineConfig:
     for key, value in raw.items():
@@ -184,9 +200,7 @@ def _build_explanation(
     candidate: dict[str, object],
     *,
     rank: int,
-    dynamic_score: float,
-    provider_repeats: int,
-    domain_repeats: int,
+    decision: _SelectionDecision,
 ) -> dict[str, object]:
     comps = candidate.get("_score_components", {})
     ordered = sorted(
@@ -196,15 +210,22 @@ def _build_explanation(
     )
     top_bits = [f"{k}={v:.2f}" for k, v in ordered[:2]]
     assumptions: list[str] = []
-    if provider_repeats > 0:
+    if decision.provider_penalty > 0:
         assumptions.append("Penalización por proveedor repetido para mejorar diversidad.")
-    if domain_repeats > 0:
+    if decision.domain_penalty > 0:
         assumptions.append("Penalización por dominio repetido para ampliar cobertura.")
 
     return {
         "rank": rank,
-        "selection_score": round(dynamic_score, 4),
-        "summary": "Seleccionada por alto desempeño multicriterio.",
+        "selection_order": decision.order,
+        "selection_stage": decision.stage,
+        "base_score": candidate["_base_score"],
+        "selection_score": round(decision.score, 4),
+        "applied_penalties": {
+            "repeated_provider": decision.provider_penalty,
+            "repeated_domain": decision.domain_penalty,
+        },
+        "summary": _SELECTION_STAGE_SUMMARIES[decision.stage],
         "main_drivers": top_bits,
         "component_scores": comps,
         "assumptions": assumptions,
@@ -257,7 +278,7 @@ def optimize_recommendations(
             and (not cfg.enforce_unique_solution or not name or name not in used_solution_names)
         )
 
-    def register_selection(c: dict[str, object], score: float) -> None:
+    def register_selection(c: dict[str, object], decision: _SelectionDecision) -> None:
         provider = _norm(c.get("provider"))
         domain = _norm(c.get("catalog_domain") or c.get("domain"))
         kpi = kpi_key(c)
@@ -270,7 +291,7 @@ def optimize_recommendations(
         if c.get("required_transition_key"):
             selected_transitions.add(str(c["required_transition_key"]))
         c["_selected"] = True
-        c["_selected_dynamic_score"] = score
+        c["_selection_decision"] = decision
         selected.append(c)
 
     def rank(c: dict[str, object], score: float | None = None) -> tuple:
@@ -281,14 +302,14 @@ def optimize_recommendations(
         )
 
     # Preserve the transition-first pass, reserving its first pass for compatible actions.
-    for allowed in ({"compatible"}, pending_states):
+    for allowed, stage in (({"compatible"}, "compatible_transition"), (pending_states, "conditional_transition")):
         for key, candidates in sorted(required_transition_groups.items()):
             if key in selected_transitions:
                 continue
             eligible = [c for c in candidates if c["selection_status"] in allowed and can_select(c)]
             if eligible:
                 best = min(eligible, key=rank)
-                register_selection(best, float(best["_base_score"]))
+                register_selection(best, _SelectionDecision(stage, len(selected) + 1, float(best["_base_score"])))
 
     compatible = [c for c in scored if c["selection_status"] == "compatible"]
     if cfg.diversify_domains:
@@ -299,44 +320,40 @@ def optimize_recommendations(
                 best_by_domain.setdefault(domain, c)
         for c in list(best_by_domain.values())[:max(0, cfg.min_domain_coverage)]:
             if can_select(c):
-                register_selection(c, float(c["_base_score"]))
+                register_selection(c, _SelectionDecision("domain_diversification", len(selected) + 1, float(c["_base_score"])))
 
-    def dynamic_score(c: dict[str, object]) -> float:
+    def supplementary_decision(c: dict[str, object]) -> _SelectionDecision:
         provider = _norm(c.get("provider"))
         domain = _norm(c.get("catalog_domain") or c.get("domain"))
-        return (
-            float(c["_base_score"])
-            - cfg.penalty_repeat_provider * provider_count.get(provider, 0)
-            - cfg.penalty_repeat_domain * domain_count.get(domain, 0)
+        provider_penalty = cfg.penalty_repeat_provider * provider_count.get(provider, 0)
+        domain_penalty = cfg.penalty_repeat_domain * domain_count.get(domain, 0)
+        return _SelectionDecision(
+            "supplementary_ranking",
+            len(selected) + 1,
+            float(c["_base_score"]) - provider_penalty - domain_penalty,
+            provider_penalty,
+            domain_penalty,
         )
 
     while len(selected) < cfg.max_recommendations:
-        eligible = [(dynamic_score(c), c) for c in compatible if can_select(c)]
+        eligible = [(supplementary_decision(c), c) for c in compatible if can_select(c)]
         if not eligible:
             break
-        score, best = min(eligible, key=lambda item: rank(item[1], item[0]))
-        if score <= -1.0:
+        decision, best = min(eligible, key=lambda item: rank(item[1], item[0].score))
+        if decision.score <= -1.0:
             break
-        register_selection(best, score)
+        register_selection(best, decision)
 
     selected.sort(key=lambda c: (
         _horizon_order(str(c.get("plazo", ""))),
         c["selection_status"] != "compatible",
-        *rank(c, float(c["_selected_dynamic_score"])),
+        *rank(c, c["_selection_decision"].score),
     ))
     explained = []
     for i, c in enumerate(selected, 1):
-        provider = _norm(c.get("provider"))
-        domain = _norm(c.get("catalog_domain") or c.get("domain"))
         row = dict(c)
-        row["engine_explanation"] = _build_explanation(
-            row,
-            rank=i,
-            dynamic_score=float(row["_selected_dynamic_score"]),
-            provider_repeats=max(provider_count.get(provider, 1) - 1, 0),
-            domain_repeats=max(domain_count.get(domain, 1) - 1, 0),
-        )
-        for field in ("_base_score", "_score_components", "_selected", "_selected_dynamic_score", "catalog_solution_name", "catalog_domain"):
+        row["engine_explanation"] = _build_explanation(row, rank=i, decision=c["_selection_decision"])
+        for field in ("_base_score", "_score_components", "_selected", "_selection_decision", "catalog_solution_name", "catalog_domain"):
             row.pop(field, None)
         explained.append(row)
 
